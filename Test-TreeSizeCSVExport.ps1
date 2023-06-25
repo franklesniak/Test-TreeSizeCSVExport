@@ -79,15 +79,15 @@ $strThisScriptVersionNumber = [version]'1.0.20230625.0'
 
 $datetimeStartOfScript = Get-Date
 
-$__TREEINCLUDESIZE = $true
+$__TREEINCLUDESIZE = $false
 $__TREEINCLUDEALLOCATED = $true
-$__TREEINCLUDELASTMODIFIED = $true
-$__TREEINCLUDELASTACCESSED = $true
-$__TREEINCLUDECREATIONDATE = $true
-$__TREEINCLUDEOWNER = $true
+$__TREEINCLUDELASTMODIFIED = $false
+$__TREEINCLUDELASTACCESSED = $false
+$__TREEINCLUDECREATIONDATE = $false
+$__TREEINCLUDEOWNER = $false
 $__TREEINCLUDEPERMISSIONS = $true
-$__TREEINCLUDEINHERITEDPERMISSIONS = $true
-$__TREEINCLUDEOWNPERMISSIONS = $true
+$__TREEINCLUDEINHERITEDPERMISSIONS = $false
+$__TREEINCLUDEOWNPERMISSIONS = $false
 
 function Split-StringOnLiteralString {
     # Split-StringOnLiteralString is designed to split a string the way the way that I
@@ -344,6 +344,9 @@ function Convert-RawCSVElementToString {
     if ($boolDoubleQuoteEncapsulation -eq $true) {
         $strWorkingCSVElement = $strWorkingCSVElement.Replace('""', '"')
     }
+
+    $refStrCSVElement.Value = $strWorkingCSVElement
+    $true
 }
 
 if ((Test-Path $CSVPath) -eq $false) {
@@ -442,6 +445,63 @@ if ($listUnmatchedHeaders.Count -gt 0) {
 }
 
 $hashtablePathsToFolderElements = @{}
+
+$intTotalRows = $arrContent.Count
+for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
+    $strRow = $arrContent[$intCounter]
+    $arrRow = Split-StringOnLiteralString $strRow ','
+
+    $strFullPathOrPath = ''
+    $boolSuccess = Convert-RawCSVElementToString $strFullPathOrPath $arrRow[$intColumnIndexOfFullPathOrPath]
+
+    if ($__TREEINCLUDESIZE -eq $true) {
+        $strSize = ''
+        $boolSuccess = Convert-RawCSVElementToString $strSize $arrRow[$intColumnIndexOfSize]
+    }
+
+    if ($__TREEINCLUDEALLOCATED -eq $true) {
+        $strAllocated = ''
+        $boolSuccess = Convert-RawCSVElementToString $strAllocated $arrRow[$intColumnIndexOfAllocated]
+    }
+
+    if ($__TREEINCLUDELASTMODIFIED -eq $true) {
+        $strLastModified = ''
+        $boolSuccess = Convert-RawCSVElementToString $strLastModified $arrRow[$intColumnIndexOfLastModified]
+    }
+
+    if ($__TREEINCLUDELASTACCESSED -eq $true) {
+        $strLastAccessed = ''
+        $boolSuccess = Convert-RawCSVElementToString $strLastAccessed $arrRow[$intColumnIndexOfLastAccessed]
+    }
+
+    if ($__TREEINCLUDECREATIONDATE -eq $true) {
+        $strCreationDate = ''
+        $boolSuccess = Convert-RawCSVElementToString $strCreationDate $arrRow[$intColumnIndexOfCreationDate]
+    }
+
+    if ($__TREEINCLUDEOWNER -eq $true) {
+        $strOwner = ''
+        $boolSuccess = Convert-RawCSVElementToString $strOwner $arrRow[$intColumnIndexOfOwner]
+    }
+
+    if ($__TREEINCLUDEPERMISSIONS -eq $true) {
+        $strPermissions = ''
+        $boolSuccess = Convert-RawCSVElementToString $strPermissions $arrRow[$intColumnIndexOfPermissions]
+    }
+
+    if ($__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
+        $strInheritedPermissions = ''
+        $boolSuccess = Convert-RawCSVElementToString $strInheritedPermissions $arrRow[$intColumnIndexOfInheritedPermissions]
+    }
+
+    if ($__TREEINCLUDEOWNPERMISSIONS -eq $true) {
+        $strOwnPermissions = ''
+        $boolSuccess = Convert-RawCSVElementToString $strOwnPermissions $arrRow[$intColumnIndexOfOwnPermissions]
+    }
+
+    $strType = ''
+    $boolSuccess = Convert-RawCSVElementToString $strType $arrRow[$intColumnIndexOfType]
+}
 
 if ($DoNotCleanupMemory.IsPresent -eq $false) {
     Write-Verbose 'Cleaning up memory...'
