@@ -31,10 +31,10 @@ with dot-sourcing (e.g., . .\Test-TreeSizeCSVExport.ps1) or other means where th
 workspace will not be cleaned up after conclusion of the script.
 
 .EXAMPLE
-PS C:\> Test-TreeSizeCSVExport.ps1 -CSVPath 'C:\Users\username\Downloads\File_Server_Analysis\SERVER01_Public.csv' -ReportPath 'C:\Users\flesniak\Downloads\File_Server_Analysis\SERVER01_Public_Report.txt'
+PS C:\> Test-TreeSizeCSVExport.ps1 -CSVPath 'C:\Users\username\Downloads\File_Server_Analysis\SERVER01_Public.csv' -ReportPath 'C:\Users\username\Downloads\File_Server_Analysis\SERVER01_Public_Report.txt'
 
 This example loads the TreeSize export CSV from the specified path, analyzes it, and
-writes findings to the report path specified.
+writes findings to the specified report path.
 
 .OUTPUTS
 None
@@ -320,6 +320,32 @@ function Convert-TreeSizeSizeToUInt64Bytes {
     return 0
 }
 
+function Convert-RawCSVElementToString {
+    $refStrCSVElement = $args[0]
+    $strRawCSVElement = $args[1]
+
+    $boolDoubleQuoteEncapsulation = $false
+    # Check for $strRawCSVElement beginning and ending in double quotation marks
+    if ([string]::IsNullOrEmpty($strRawCSVElement) -eq $true) {
+        $strWorkingCSVElement = ''
+    } else {
+        if ($strRawCSVElement.Length -ge 2) {
+            if (($strRawCSVElement.Substring(0, 1) -eq '"') -and ($strRawCSVElement.Substring($strRawCSVElement.Length - 1, 1) -eq '"')) {
+                $strWorkingCSVElement = $strRawCSVElement.Substring(1, $strRawCSVElement.Length - 2)
+                $boolDoubleQuoteEncapsulation = $true
+            } else {
+                $strWorkingCSVElement = $strRawCSVElement
+            }
+        } else {
+            $strWorkingCSVElement = $strRawCSVElement
+        }
+    }
+
+    if ($boolDoubleQuoteEncapsulation -eq $true) {
+        $strWorkingCSVElement = $strWorkingCSVElement.Replace('""', '"')
+    }
+}
+
 if ((Test-Path $CSVPath) -eq $false) {
     Write-Warning 'The a TreeSize CSV export does not exist at the specified path. Analysis cannot continue.'
     return
@@ -414,6 +440,8 @@ if ($listRequiredHeadersNotFound.Count -gt 0) {
 if ($listUnmatchedHeaders.Count -gt 0) {
     Write-Warning ('The following headers were not matched to a known header: ' + $listUnmatchedHeaders)
 }
+
+$hashtablePathsToFolderElements = @{}
 
 if ($DoNotCleanupMemory.IsPresent -eq $false) {
     Write-Verbose 'Cleaning up memory...'
