@@ -75,9 +75,19 @@ param (
 # OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endregion License ####################################################################
 
-$strThisScriptVersionNumber = [version]'1.0.20230612.0'
+$strThisScriptVersionNumber = [version]'1.0.20230625.0'
 
 $datetimeStartOfScript = Get-Date
+
+$__TREEINCLUDESIZE = $true
+$__TREEINCLUDEALLOCATED = $true
+$__TREEINCLUDELASTMODIFIED = $true
+$__TREEINCLUDELASTACCESSED = $true
+$__TREEINCLUDECREATIONDATE = $true
+$__TREEINCLUDEOWNER = $true
+$__TREEINCLUDEPERMISSIONS = $true
+$__TREEINCLUDEINHERITEDPERMISSIONS = $true
+$__TREEINCLUDEOWNPERMISSIONS = $true
 
 function Split-StringOnLiteralString {
     # Split-StringOnLiteralString is designed to split a string the way the way that I
@@ -194,12 +204,128 @@ function Split-StringOnLiteralString {
     }
 }
 
+function New-PSObjectTreeDirectoryElement {
+    $refPSObjectTreeElement = $args[0]
+
+    $PSObjectTreeDirectoryElement = New-Object -TypeName PSObject
+
+    $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'FullPath' -Value ''
+    $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'Name' -Value ''
+    $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'ParentPath' -Value ''
+    $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'ReferenceToParentElement' -Value [ref]$null
+    $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'ChildDirectories' -Value @{}
+    $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'ChildFiles' -Value @{}
+    if ($script:__TREEINCLUDESIZE -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'SizeInBytesAsReportedByTreeSize' -Value [uint64]0
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'RolledUpSizeInBytes' -Value [uint64]0
+    }
+    if ($script:__TREEINCLUDEALLOCATED -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'DiskAllocationInBytesAsReportedByTreeSize' -Value [uint64]0
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'RolledUpDiskAllocationInBytes' -Value [uint64]0
+    }
+    if ($script:__TREEINCLUDELASTMODIFIED -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'LastModified' -Value [datetime]::MinValue
+    }
+    if ($script:__TREEINCLUDELASTACCESSED -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'LastAccessed' -Value [datetime]::MinValue
+    }
+    if ($script:__TREEINCLUDECREATIONDATE -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'CreationDate' -Value [datetime]::MinValue
+    }
+    if ($script:__TREEINCLUDEOWNER -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'Owner' -Value ''
+    }
+    if ($script:__TREEINCLUDEPERMISSIONS -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'Permissions' -Value ''
+    }
+    if ($script:__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'InheritedPermissions' -Value ''
+    }
+    if ($script:__TREEINCLUDEOWNPERMISSIONS -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'OwnPermissions' -Value ''
+    }
+
+    $refPSObjectTreeElement.Value = $PSObjectTreeDirectoryElement
+
+    return 0
+}
+
+function New-PSObjectTreeFileElement {
+    $refPSObjectTreeElement = $args[0]
+
+    $PSObjectTreeFileElement = New-Object -TypeName PSObject
+
+    $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'FullPath' -Value ''
+    $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'Name' -Value ''
+    $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'ParentPath' -Value ''
+    $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'ReferenceToParentElement' -Value [ref]$null
+    if ($script:__TREEINCLUDESIZE -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'SizeInBytesAsReportedByTreeSize' -Value [uint64]0
+    }
+    if ($script:__TREEINCLUDEALLOCATED -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'DiskAllocationInBytesAsReportedByTreeSize' -Value [uint64]0
+    }
+    if ($script:__TREEINCLUDELASTMODIFIED -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'LastModified' -Value [datetime]::MinValue
+    }
+    if ($script:__TREEINCLUDELASTACCESSED -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'LastAccessed' -Value [datetime]::MinValue
+    }
+    if ($script:__TREEINCLUDECREATIONDATE -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'CreationDate' -Value [datetime]::MinValue
+    }
+    if ($script:__TREEINCLUDEOWNER -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'Owner' -Value ''
+    }
+    if ($script:__TREEINCLUDEPERMISSIONS -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'Permissions' -Value ''
+    }
+    if ($script:__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'InheritedPermissions' -Value ''
+    }
+    if ($script:__TREEINCLUDEOWNPERMISSIONS -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'OwnPermissions' -Value ''
+    }
+
+    $refPSObjectTreeElement.Value = $PSObjectTreeFileElement
+
+    return 0
+}
+
+function Convert-TreeSizeSizeToUInt64Bytes {
+    $refUInt64SizeInBytes = $args[0]
+    $strTreeSizeSize = $args[1]
+
+    $strWorkingTreeSizeSize = $strTreeSizeSize.Trim()
+    $arrWorkingTreeSizeSize = Split-StringOnLiteralString $strWorkingTreeSizeSize ' '
+
+    if ($arrWorkingTreeSizeSize[1] -eq 'Bytes') {
+        $uint64SizeInBytes = [uint64]($arrWorkingTreeSizeSize[0])
+    } elseif ($arrWorkingTreeSizeSize[1] -eq 'KB') {
+        $uint64SizeInBytes = [uint64]([double]($arrWorkingTreeSizeSize[0]) * 1024)
+    } elseif ($arrWorkingTreeSizeSize[1] -eq 'MB') {
+        $uint64SizeInBytes = [uint64]([double]($arrWorkingTreeSizeSize[0]) * 1024 * 1024)
+    } elseif ($arrWorkingTreeSizeSize[1] -eq 'GB') {
+        $uint64SizeInBytes = [uint64]([double]($arrWorkingTreeSizeSize[0]) * 1024 * 1024 * 1024)
+    } elseif ($arrWorkingTreeSizeSize[1] -eq 'TB') {
+        $uint64SizeInBytes = [uint64]([double]($arrWorkingTreeSizeSize[0]) * 1024 * 1024 * 1024 * 1024)
+    } elseif ($arrWorkingTreeSizeSize[1] -eq 'PB') {
+        $uint64SizeInBytes = [uint64]([double]($arrWorkingTreeSizeSize[0]) * 1024 * 1024 * 1024 * 1024 * 1024)
+    } else {
+        # Write-Warning ('The TreeSize size "' + $strTreeSizeSize + '" could not be converted to a UInt64 value.')
+        return -1
+    }
+
+    $refUInt64SizeInBytes.Value = $uint64SizeInBytes
+    return 0
+}
+
 if ((Test-Path $CSVPath) -eq $false) {
     Write-Warning 'The a TreeSize CSV export does not exist at the specified path. Analysis cannot continue.'
     return
 }
 
-Write-Verbose 'Loading the malformed CSV file into memory...'
+Write-Verbose 'Loading the malformed CSV file into memory. This may take a while...'
 $arrContent = @(Get-Content -Path $CSVPath | Select-Object -Skip 4)
 
 $strHeader = $arrContent[0]
@@ -222,16 +348,48 @@ $hashtableHeaderStatus = @{
 
 $listUnmatchedHeaders = New-Object System.Collections.Generic.List[String]
 $listRequiredHeadersNotFound = New-Object System.Collections.Generic.List[String]
-$intColumnIndexOfPermissions = -1
+$intColumnIndexOfFullPathOrPath = -1
+$intColumnIndexOfSize = -1
 $intColumnIndexOfAllocated = -1
+$intColumnIndexOfLastModified = -1
+$intColumnIndexOfLastAccessed = -1
+$intColumnIndexOfOwner = -1
+$intColumnIndexOfPermissions = -1
+$intColumnIndexOfInheritedPermissions = -1
+$intColumnIndexOfOwnPermissions = -1
+$intColumnIndexOfType = -1
+$intColumnIndexOfCreationDate = -1
+
 
 foreach ($strHeaderElement in $arrHeader) {
     if ($hashtableHeaderStatus.ContainsKey($strHeaderElement)) {
         $hashtableHeaderStatus[$strHeaderElement] = $true
-        if ($strHeaderElement -eq 'Permissions') {
-            $intColumnIndexOfPermissions = $arrHeader.IndexOf($strHeaderElement)
+        if ($strHeaderElement -eq 'Full Path') {
+            $intColumnIndexOfFullPathOrPath = $arrHeader.IndexOf($strHeaderElement)
+        } elseif ($strHeaderElement -eq 'Path') {
+            if ($intColumnIndexOfFullPathOrPath -eq -1) {
+                $intColumnIndexOfFullPathOrPath = $arrHeader.IndexOf($strHeaderElement)
+            }
+        } elseif ($strHeaderElement -eq 'Size') {
+            $intColumnIndexOfSize = $arrHeader.IndexOf($strHeaderElement)
         } elseif ($strHeaderElement -eq 'Allocated') {
             $intColumnIndexOfAllocated = $arrHeader.IndexOf($strHeaderElement)
+        } elseif ($strHeaderElement -eq 'Last Modified') {
+            $intColumnIndexOfLastModified = $arrHeader.IndexOf($strHeaderElement)
+        } elseif ($strHeaderElement -eq 'Last Accessed') {
+            $intColumnIndexOfLastAccessed = $arrHeader.IndexOf($strHeaderElement)
+        } elseif ($strHeaderElement -eq 'Owner') {
+            $intColumnIndexOfOwner = $arrHeader.IndexOf($strHeaderElement)
+        } elseif ($strHeaderElement -eq 'Permissions') {
+            $intColumnIndexOfPermissions = $arrHeader.IndexOf($strHeaderElement)
+        } elseif ($strHeaderElement -eq 'Inherited Permissions') {
+            $intColumnIndexOfInheritedPermissions = $arrHeader.IndexOf($strHeaderElement)
+        } elseif ($strHeaderElement -eq 'Own Permissions') {
+            $intColumnIndexOfOwnPermissions = $arrHeader.IndexOf($strHeaderElement)
+        } elseif ($strHeaderElement -eq 'Type') {
+            $intColumnIndexOfType = $arrHeader.IndexOf($strHeaderElement)
+        } elseif ($strHeaderElement -eq 'Creation Date') {
+            $intColumnIndexOfCreationDate = $arrHeader.IndexOf($strHeaderElement)
         }
     } else {
         $listUnmatchedHeaders.Add($strHeaderElement)
