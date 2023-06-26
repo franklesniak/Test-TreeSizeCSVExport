@@ -79,6 +79,7 @@ $strThisScriptVersionNumber = [version]'1.0.20230625.0'
 
 $datetimeStartOfScript = Get-Date
 
+$__TREEINCLUDETYPE = $false
 $__TREEINCLUDESIZE = $false
 $__TREEINCLUDEALLOCATED = $true
 $__TREEINCLUDELASTMODIFIED = $false
@@ -215,6 +216,9 @@ function New-PSObjectTreeDirectoryElement {
     $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'ReferenceToParentElement' -Value [ref]$null
     $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'ChildDirectories' -Value @{}
     $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'ChildFiles' -Value @{}
+    if ($script:__TREEINCLUDETYPE -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'Type' -Value 'Folder'
+    }
     if ($script:__TREEINCLUDESIZE -eq $true) {
         $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'SizeInBytesAsReportedByTreeSize' -Value [uint64]0
         $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'RolledUpSizeInBytes' -Value [uint64]0
@@ -247,7 +251,7 @@ function New-PSObjectTreeDirectoryElement {
 
     $refPSObjectTreeElement.Value = $PSObjectTreeDirectoryElement
 
-    return 0
+    return $true
 }
 
 function New-PSObjectTreeFileElement {
@@ -259,6 +263,9 @@ function New-PSObjectTreeFileElement {
     $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'Name' -Value ''
     $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'ParentPath' -Value ''
     $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'ReferenceToParentElement' -Value [ref]$null
+    if ($script:__TREEINCLUDETYPE -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'Type' -Value 'File'
+    }
     if ($script:__TREEINCLUDESIZE -eq $true) {
         $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'SizeInBytesAsReportedByTreeSize' -Value [uint64]0
     }
@@ -289,7 +296,7 @@ function New-PSObjectTreeFileElement {
 
     $refPSObjectTreeElement.Value = $PSObjectTreeFileElement
 
-    return 0
+    return $true
 }
 
 function Convert-TreeSizeSizeToUInt64Bytes {
@@ -313,11 +320,11 @@ function Convert-TreeSizeSizeToUInt64Bytes {
         $uint64SizeInBytes = [uint64]([double]($arrWorkingTreeSizeSize[0]) * 1024 * 1024 * 1024 * 1024 * 1024)
     } else {
         # Write-Warning ('The TreeSize size "' + $strTreeSizeSize + '" could not be converted to a UInt64 value.')
-        return -1
+        return $false
     }
 
     $refUInt64SizeInBytes.Value = $uint64SizeInBytes
-    return 0
+    return $true
 }
 
 function Convert-RawCSVElementToString {
@@ -346,13 +353,75 @@ function Convert-RawCSVElementToString {
     }
 
     $refStrCSVElement.Value = $strWorkingCSVElement
-    $true
+    return $true
 }
+
+function Get-PSVersion {
+    <#
+    .SYNOPSIS
+    Returns the version of PowerShell that is running
+
+    .DESCRIPTION
+    Returns the version of PowerShell that is running, including on the original
+    release of Windows PowerShell (version 1.0)
+
+    .EXAMPLE
+    Get-PSVersion
+
+    This example returns the version of PowerShell that is running. On versions of
+    PowerShell greater than or equal to version 2.0, this function returns the
+    equivalent of $PSVersionTable.PSVersion
+
+    .OUTPUTS
+    A [version] object representing the version of PowerShell that is running
+
+    .NOTES
+    PowerShell 1.0 does not have a $PSVersionTable variable, so this function returns
+    [version]('1.0') on PowerShell 1.0
+    #>
+
+    [CmdletBinding()]
+    [OutputType([version])]
+
+    param ()
+
+    #region License ################################################################
+    # Copyright (c) 2023 Frank Lesniak
+    #
+    # Permission is hereby granted, free of charge, to any person obtaining a copy of
+    # this software and associated documentation files (the "Software"), to deal in the
+    # Software without restriction, including without limitation the rights to use,
+    # copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
+    # Software, and to permit persons to whom the Software is furnished to do so,
+    # subject to the following conditions:
+    #
+    # The above copyright notice and this permission notice shall be included in all
+    # copies or substantial portions of the Software.
+    #
+    # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+    # FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+    # COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
+    # AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+    # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+    #endregion License ################################################################
+
+    $versionThisFunction = [version]('1.0.20230613.0')
+
+    if (Test-Path variable:\PSVersionTable) {
+        $PSVersionTable.PSVersion
+    } else {
+        [version]('1.0')
+    }
+}
+
 
 if ((Test-Path $CSVPath) -eq $false) {
     Write-Warning 'The a TreeSize CSV export does not exist at the specified path. Analysis cannot continue.'
     return
 }
+
+$versionPS = Get-PSVersion
 
 Write-Verbose 'Loading the TreeSize CSV file into memory. This may take a while...'
 $arrContent = @(Get-Content -Path $CSVPath | Select-Object -Skip 4)
@@ -444,6 +513,8 @@ if ($listUnmatchedHeaders.Count -gt 0) {
 }
 
 $hashtablePathsToFolderElements = @{}
+$hashtableParentPathsToUnattachedChildDirectories = @{}
+$hashtableParentPathsToUnattachedChildFiles = @{}
 
 $timedateStartOfLoop = Get-Date
 # Create a queue for storing lagging timestamps for ETA calculation
@@ -463,6 +534,7 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
     $strRow = $arrContent[$intCounter]
     $arrRow = Split-StringOnLiteralString $strRow ','
 
+    #region Extract Full Path and Type #############################################
     $boolMinimumElementsExtracted = $false
     $strFullPathOrPath = ''
     $boolSuccess = Convert-RawCSVElementToString ([ref]$strFullPathOrPath) $arrRow[$intColumnIndexOfFullPathOrPath]
@@ -473,51 +545,234 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
             $boolMinimumElementsExtracted = $true
         }
     }
+    #endregion Extract Full Path and Type #############################################
 
     if ($boolMinimumElementsExtracted -eq $true) {
-        if ($__TREEINCLUDESIZE -eq $true) {
-            $strSize = ''
-            $boolSuccess = Convert-RawCSVElementToString ([ref]$strSize) $arrRow[$intColumnIndexOfSize]
+        #region Create the PSObjectTreeElement #####################################
+        $PSObjectTreeElement = $null
+        if ($strType -eq 'Folder') {
+            $boolSuccess = New-PSObjectTreeDirectoryElement ([ref]$PSObjectTreeElement)
+        } else {
+            # Assume file
+            $boolSuccess = New-PSObjectTreeFileElement ([ref]$PSObjectTreeElement)
+            if ($boolSuccess -eq $true) {
+                if ($__TREEINCLUDETYPE -eq $true) {
+                    $PSObjectTreeElement.Type = $strType
+                }
+            }
         }
+        #endregion Create the PSObjectTreeElement #####################################
 
-        if ($__TREEINCLUDEALLOCATED -eq $true) {
-            $strAllocated = ''
-            $boolSuccess = Convert-RawCSVElementToString ([ref]$strAllocated) $arrRow[$intColumnIndexOfAllocated]
-        }
+        if ($boolSuccess -eq $false) {
+            Write-Warning ('Failed to create a PSObjectTreeElement for the following row: ' + $strRow)
+        } else {
+            #region Store the Full Path ############################################
+            $PSObjectTreeElement.FullPath = $strFullPathOrPath
+            if ($strType -eq 'Folder') {
+                # This is a folder
+                if ($hashtablePathsToFolderElements.ContainsKey($strFullPathOrPath) -eq $true) {
+                    # This path has already been added to the tree
+                    Write-Warning ('The following path has already been added to the tree: ' + $strFullPathOrPath)
+                    $hashtablePathsToFolderElements.Item($strFullPathOrPath) = [ref]$PSObjectTreeElement
+                } else {
+                    # This path has not yet been added to the tree
+                    $hashtablePathsToFolderElements.Add($strFullPathOrPath, [ref]$PSObjectTreeElement)
+                }
+            }
+            #endregion Store the Full Path ############################################
 
-        if ($__TREEINCLUDELASTMODIFIED -eq $true) {
-            $strLastModified = ''
-            $boolSuccess = Convert-RawCSVElementToString ([ref]$strLastModified) $arrRow[$intColumnIndexOfLastModified]
-        }
+            #region Get and Store the Parent Path ##################################
+            $strParentPath = Split-Path -Path $strFullPathOrPath -Parent
+            $PSObjectTreeElement.ParentPath = $strParentPath
+            #endregion Get and Store the Parent Path ##################################
 
-        if ($__TREEINCLUDELASTACCESSED -eq $true) {
-            $strLastAccessed = ''
-            $boolSuccess = Convert-RawCSVElementToString ([ref]$strLastAccessed) $arrRow[$intColumnIndexOfLastAccessed]
-        }
+            #region Get and Store This Object's Name ###############################
+            $strName = Split-Path -Path $strFullPathOrPath -Leaf
+            $PSObjectTreeElement.Name = $strName
+            #endregion Get and Store This Object's Name ###############################
 
-        if ($__TREEINCLUDECREATIONDATE -eq $true) {
-            $strCreationDate = ''
-            $boolSuccess = Convert-RawCSVElementToString ([ref]$strCreationDate) $arrRow[$intColumnIndexOfCreationDate]
-        }
+            #region Attach to Existing Parent Element, or Store as Unattached ######
+            if ([string]::IsNullOrEmpty($strParentPath) -eq $false) {
+                # This path has an identifiable parent folder
+                if ($hashtablePathsToFolderElements.ContainsKey($strParentPath) -eq $false) {
+                    # This path's parent folder has not yet been added to the tree
+                    $refToParentElement = [ref]$null
+                    if ($strType -eq 'Folder') {
+                        # This is a folder
+                        if ($hashtableParentPathsToUnattachedChildDirectories.ContainsKey($strParentPath) -eq $false) {
+                            # New unattached parent folder
+                            if ($versionPS -ge ([version]'6.0')) {
+                                $listChildElements = New-Object System.Collections.Generic.List[ref]
+                                $listChildElements.Add([ref]$PSObjectTreeElement)
+                            } else {
+                                $listChildElements = New-Object System.Collections.ArrayList
+                                [void]($listChildElements.Add([ref]$PSObjectTreeElement))
+                            }
+                            $hashtableParentPathsToUnattachedChildDirectories.Add($strParentPath, $listChildElements)
+                        } else {
+                            # Existing unattached parent folder
+                            # Add this element to the existing list
+                            if ($versionPS -ge ([version]'6.0')) {
+                                ($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add([ref]$PSObjectTreeElement)
+                            } else {
+                                [void](($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add([ref]$PSObjectTreeElement))
+                            }
+                        }
+                    } else {
+                        # Assume file
+                        if ($hashtableParentPathsToUnattachedChildFiles.ContainsKey($strParentPath) -eq $false) {
+                            # New unattached parent folder
+                            if ($versionPS -ge ([version]'6.0')) {
+                                $listChildElements = New-Object System.Collections.Generic.List[ref]
+                                $listChildElements.Add([ref]$PSObjectTreeElement)
+                            } else {
+                                $listChildElements = New-Object System.Collections.ArrayList
+                                [void]($listChildElements.Add([ref]$PSObjectTreeElement))
+                            }
+                            $hashtableParentPathsToUnattachedChildFiles.Add($strParentPath, $listChildElements)
+                        } else {
+                            # Existing unattached parent folder
+                            # Add this element to the existing list
+                            if ($versionPS -ge ([version]'6.0')) {
+                                ($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add([ref]$PSObjectTreeElement)
+                            } else {
+                                [void](($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add([ref]$PSObjectTreeElement))
+                            }
+                        }
+                    }
+                } else {
+                    # This path's parent folder has already been added to the tree
+                    $refToParentElement = $hashtablePathsToFolderElements.Item($strParentPath)
+                    if ($strType -eq 'Folder') {
+                        # This is a folder
+                        if ((($refToParentElement.Value).ChildDirectories).ContainsKey($strName) -eq $true) {
+                            # This folder already exists in the parent folder
+                            # This is a duplicate folder
+                            # This is not allowed
+                            Write-Warning ('Duplicate folder found: ' + $strFullPathOrPath)
+                            (($refToParentElement.Value).ChildDirectories).Item($strName) = [ref]$PSObjectTreeElement
+                        } else {
+                            # This folder does not already exist in the parent folder
+                            # Add this folder to the parent folder
+                            (($refToParentElement.Value).ChildDirectories).Add($strName, [ref]$PSObjectTreeElement)
+                        }
+                    } else {
+                        # Assume this is a file
+                        if ((($refToParentElement.Value).ChildFiles).ContainsKey($strName) -eq $true) {
+                            # This file already exists in the parent folder
+                            # This is a duplicate file
+                            # This is not allowed
+                            Write-Warning ('Duplicate file found: ' + $strFullPathOrPath)
+                            (($refToParentElement.Value).ChildFiles).Item($strName) = [ref]$PSObjectTreeElement
+                        } else {
+                            # This file does not already exist in the parent folder
+                            # Add this file to the parent folder
+                            (($refToParentElement.Value).ChildFiles).Add($strName, [ref]$PSObjectTreeElement)
+                        }
+                    }
+                }
+            } else {
+                # This path has no identifiable parent folder
+                # This path is the root of the tree
+                $refToParentElement = [ref]$null
+            }
+            $PSObjectTreeElement.ReferenceToParentElement = $refToParentElement
+            #endregion Attach to Existing Parent Element, or Store as Unattached ######
 
-        if ($__TREEINCLUDEOWNER -eq $true) {
-            $strOwner = ''
-            $boolSuccess = Convert-RawCSVElementToString ([ref]$strOwner) $arrRow[$intColumnIndexOfOwner]
-        }
+            #region Attach to Already-Existing Children ############################
+            # Start with folders/directories
+            if ($hashtableParentPathsToUnattachedChildDirectories.ContainsKey($strFullPathOrPath) -eq $true) {
+                # This path has unattached child directories
+                $listChildElements = $hashtableParentPathsToUnattachedChildDirectories.Item($strFullPathOrPath)
+                foreach ($refChildElement in $listChildElements) {
+                    ($refChildElement.Value).ReferenceToParentElement = [ref]$PSObjectTreeElement
+                    if ((($refToParentElement.Value).ChildDirectories).ContainsKey(($refChildElement.Value).Name) -eq $true) {
+                        # This folder already exists in the parent folder
+                        # This is a duplicate folder
+                        # This is not allowed
+                        Write-Warning ('Duplicate folder found: ' + ($refChildElement.Value).FullPath)
+                        (($refToParentElement.Value).ChildDirectories).Item(($refChildElement.Value).Name) = $refChildElement
+                    } else {
+                        # This folder does not already exist in the parent folder
+                        # Add this folder to the parent folder
+                        (($refToParentElement.Value).ChildDirectories).Add(($refChildElement.Value).Name, $refChildElement)
+                    }
+                }
+                $hashtableParentPathsToUnattachedChildDirectories.Remove($strFullPathOrPath)
+            }
+            # Next, check files
+            if ($hashtableParentPathsToUnattachedChildFiles.ContainsKey($strFullPathOrPath) -eq $true) {
+                # This path has unattached child files
+                $listChildElements = $hashtableParentPathsToUnattachedChildFiles.Item($strFullPathOrPath)
+                foreach ($refChildElement in $listChildElements) {
+                    ($refChildElement.Value).ReferenceToParentElement = [ref]$PSObjectTreeElement
+                    if ((($refToParentElement.Value).ChildFiles).ContainsKey(($refChildElement.Value).Name) -eq $true) {
+                        # This file already exists in the parent folder
+                        # This is a duplicate file
+                        # This is not allowed
+                        Write-Warning ('Duplicate file found: ' + ($refChildElement.Value).FullPath)
+                        (($refToParentElement.Value).ChildFiles).Item(($refChildElement.Value).Name) = $refChildElement
+                    } else {
+                        # This file does not already exist in the parent folder
+                        # Add this file to the parent folder
+                        (($refToParentElement.Value).ChildFiles).Add(($refChildElement.Value).Name, $refChildElement)
+                    }
+                }
+                $hashtableParentPathsToUnattachedChildFiles.Remove($strFullPathOrPath)
+            }
+            #endregion Attach to Already-Existing Children ############################
 
-        if ($__TREEINCLUDEPERMISSIONS -eq $true) {
-            $strPermissions = ''
-            $boolSuccess = Convert-RawCSVElementToString ([ref]$strPermissions) $arrRow[$intColumnIndexOfPermissions]
-        }
+            if ($__TREEINCLUDESIZE -eq $true) {
+                $strSize = ''
+                $boolSuccess = Convert-RawCSVElementToString ([ref]$strSize) $arrRow[$intColumnIndexOfSize]
+                if ($boolSuccess -eq $true) {
+                    $int64Size = [int64]0
+                    $boolSuccess = Convert-TreeSizeSizeToUInt64Bytes ([ref]$int64Size) $strSize
+                    if ($boolSuccess -eq $true) {
+                        $PSObjectTreeElement.SizeInBytesAsReportedByTreeSize = $int64Size
+                    }
+                }
+            }
 
-        if ($__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
-            $strInheritedPermissions = ''
-            $boolSuccess = Convert-RawCSVElementToString ([ref]$strInheritedPermissions) $arrRow[$intColumnIndexOfInheritedPermissions]
-        }
+            if ($__TREEINCLUDEALLOCATED -eq $true) {
+                $strAllocated = ''
+                $boolSuccess = Convert-RawCSVElementToString ([ref]$strAllocated) $arrRow[$intColumnIndexOfAllocated]
+            }
 
-        if ($__TREEINCLUDEOWNPERMISSIONS -eq $true) {
-            $strOwnPermissions = ''
-            $boolSuccess = Convert-RawCSVElementToString ([ref]$strOwnPermissions) $arrRow[$intColumnIndexOfOwnPermissions]
+            if ($__TREEINCLUDELASTMODIFIED -eq $true) {
+                $strLastModified = ''
+                $boolSuccess = Convert-RawCSVElementToString ([ref]$strLastModified) $arrRow[$intColumnIndexOfLastModified]
+            }
+
+            if ($__TREEINCLUDELASTACCESSED -eq $true) {
+                $strLastAccessed = ''
+                $boolSuccess = Convert-RawCSVElementToString ([ref]$strLastAccessed) $arrRow[$intColumnIndexOfLastAccessed]
+            }
+
+            if ($__TREEINCLUDECREATIONDATE -eq $true) {
+                $strCreationDate = ''
+                $boolSuccess = Convert-RawCSVElementToString ([ref]$strCreationDate) $arrRow[$intColumnIndexOfCreationDate]
+            }
+
+            if ($__TREEINCLUDEOWNER -eq $true) {
+                $strOwner = ''
+                $boolSuccess = Convert-RawCSVElementToString ([ref]$strOwner) $arrRow[$intColumnIndexOfOwner]
+            }
+
+            if ($__TREEINCLUDEPERMISSIONS -eq $true) {
+                $strPermissions = ''
+                $boolSuccess = Convert-RawCSVElementToString ([ref]$strPermissions) $arrRow[$intColumnIndexOfPermissions]
+            }
+
+            if ($__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
+                $strInheritedPermissions = ''
+                $boolSuccess = Convert-RawCSVElementToString ([ref]$strInheritedPermissions) $arrRow[$intColumnIndexOfInheritedPermissions]
+            }
+
+            if ($__TREEINCLUDEOWNPERMISSIONS -eq $true) {
+                $strOwnPermissions = ''
+                $boolSuccess = Convert-RawCSVElementToString ([ref]$strOwnPermissions) $arrRow[$intColumnIndexOfOwnPermissions]
+            }
         }
     }
     if ($intCounter % $intProgressReportingFrequency -eq 0) {
