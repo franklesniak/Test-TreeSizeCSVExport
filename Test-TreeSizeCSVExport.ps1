@@ -354,7 +354,7 @@ if ((Test-Path $CSVPath) -eq $false) {
     return
 }
 
-Write-Verbose 'Loading the malformed CSV file into memory. This may take a while...'
+Write-Verbose 'Loading the TreeSize CSV file into memory. This may take a while...'
 $arrContent = @(Get-Content -Path $CSVPath | Select-Object -Skip 4)
 
 $strHeader = $arrContent[0]
@@ -388,7 +388,6 @@ $intColumnIndexOfInheritedPermissions = -1
 $intColumnIndexOfOwnPermissions = -1
 $intColumnIndexOfType = -1
 $intColumnIndexOfCreationDate = -1
-
 
 foreach ($strHeaderElement in $arrHeader) {
     if ($hashtableHeaderStatus.ContainsKey($strHeaderElement)) {
@@ -446,61 +445,85 @@ if ($listUnmatchedHeaders.Count -gt 0) {
 
 $hashtablePathsToFolderElements = @{}
 
+$timedateStartOfLoop = Get-Date
+# Create a queue for storing lagging timestamps for ETA calculation
+$queueLaggingTimestamps = New-Object System.Collections.Queue
+$queueLaggingTimestamps.Enqueue($timedateStartOfLoop)
+$intProgressReportingFrequency = 400
+
 $intTotalRows = $arrContent.Count
 for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
+    if (($intCounter -gt 2000) -and ($intCounter % $intProgressReportingFrequency -eq 0)) {
+        # Create a progress bar after the first 2000 items have been processed
+        $timeDateLagging = $queueLaggingTimestamps.Dequeue()
+        $datetimeNow = Get-Date
+        $timespanTimeDelta = $datetimeNow - $timeDateLagging
+        Write-Progress -Activity 'Loading folder and file data into an in-memory tree' -Status 'Processing' -PercentComplete (($intCounter / $intTotalRows) * 100) -CurrentOperation ('Processing folder ' + $intCounter + ' of ' + $intTotalRows + ' (' + [string]::Format('{0:0.00}', (($intCounter / $intTotalRows) * 100)) + '%)') -SecondsRemaining (($timespanTimeDelta.TotalSeconds / $intCounter) * ($intTotalRows - $intCounter))
+    }
     $strRow = $arrContent[$intCounter]
     $arrRow = Split-StringOnLiteralString $strRow ','
 
+    $boolMinimumElementsExtracted = $false
     $strFullPathOrPath = ''
-    $boolSuccess = Convert-RawCSVElementToString $strFullPathOrPath $arrRow[$intColumnIndexOfFullPathOrPath]
-
-    if ($__TREEINCLUDESIZE -eq $true) {
-        $strSize = ''
-        $boolSuccess = Convert-RawCSVElementToString $strSize $arrRow[$intColumnIndexOfSize]
+    $boolSuccess = Convert-RawCSVElementToString ([ref]$strFullPathOrPath) $arrRow[$intColumnIndexOfFullPathOrPath]
+    if ($boolSuccess -eq $true) {
+        $strType = ''
+        $boolSuccess = Convert-RawCSVElementToString ([ref]$strType) $arrRow[$intColumnIndexOfType]
+        if ($boolSuccess -eq $true) {
+            $boolMinimumElementsExtracted = $true
+        }
     }
 
-    if ($__TREEINCLUDEALLOCATED -eq $true) {
-        $strAllocated = ''
-        $boolSuccess = Convert-RawCSVElementToString $strAllocated $arrRow[$intColumnIndexOfAllocated]
-    }
+    if ($boolMinimumElementsExtracted -eq $true) {
+        if ($__TREEINCLUDESIZE -eq $true) {
+            $strSize = ''
+            $boolSuccess = Convert-RawCSVElementToString ([ref]$strSize) $arrRow[$intColumnIndexOfSize]
+        }
 
-    if ($__TREEINCLUDELASTMODIFIED -eq $true) {
-        $strLastModified = ''
-        $boolSuccess = Convert-RawCSVElementToString $strLastModified $arrRow[$intColumnIndexOfLastModified]
-    }
+        if ($__TREEINCLUDEALLOCATED -eq $true) {
+            $strAllocated = ''
+            $boolSuccess = Convert-RawCSVElementToString ([ref]$strAllocated) $arrRow[$intColumnIndexOfAllocated]
+        }
 
-    if ($__TREEINCLUDELASTACCESSED -eq $true) {
-        $strLastAccessed = ''
-        $boolSuccess = Convert-RawCSVElementToString $strLastAccessed $arrRow[$intColumnIndexOfLastAccessed]
-    }
+        if ($__TREEINCLUDELASTMODIFIED -eq $true) {
+            $strLastModified = ''
+            $boolSuccess = Convert-RawCSVElementToString ([ref]$strLastModified) $arrRow[$intColumnIndexOfLastModified]
+        }
 
-    if ($__TREEINCLUDECREATIONDATE -eq $true) {
-        $strCreationDate = ''
-        $boolSuccess = Convert-RawCSVElementToString $strCreationDate $arrRow[$intColumnIndexOfCreationDate]
-    }
+        if ($__TREEINCLUDELASTACCESSED -eq $true) {
+            $strLastAccessed = ''
+            $boolSuccess = Convert-RawCSVElementToString ([ref]$strLastAccessed) $arrRow[$intColumnIndexOfLastAccessed]
+        }
 
-    if ($__TREEINCLUDEOWNER -eq $true) {
-        $strOwner = ''
-        $boolSuccess = Convert-RawCSVElementToString $strOwner $arrRow[$intColumnIndexOfOwner]
-    }
+        if ($__TREEINCLUDECREATIONDATE -eq $true) {
+            $strCreationDate = ''
+            $boolSuccess = Convert-RawCSVElementToString ([ref]$strCreationDate) $arrRow[$intColumnIndexOfCreationDate]
+        }
 
-    if ($__TREEINCLUDEPERMISSIONS -eq $true) {
-        $strPermissions = ''
-        $boolSuccess = Convert-RawCSVElementToString $strPermissions $arrRow[$intColumnIndexOfPermissions]
-    }
+        if ($__TREEINCLUDEOWNER -eq $true) {
+            $strOwner = ''
+            $boolSuccess = Convert-RawCSVElementToString ([ref]$strOwner) $arrRow[$intColumnIndexOfOwner]
+        }
 
-    if ($__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
-        $strInheritedPermissions = ''
-        $boolSuccess = Convert-RawCSVElementToString $strInheritedPermissions $arrRow[$intColumnIndexOfInheritedPermissions]
-    }
+        if ($__TREEINCLUDEPERMISSIONS -eq $true) {
+            $strPermissions = ''
+            $boolSuccess = Convert-RawCSVElementToString ([ref]$strPermissions) $arrRow[$intColumnIndexOfPermissions]
+        }
 
-    if ($__TREEINCLUDEOWNPERMISSIONS -eq $true) {
-        $strOwnPermissions = ''
-        $boolSuccess = Convert-RawCSVElementToString $strOwnPermissions $arrRow[$intColumnIndexOfOwnPermissions]
-    }
+        if ($__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
+            $strInheritedPermissions = ''
+            $boolSuccess = Convert-RawCSVElementToString ([ref]$strInheritedPermissions) $arrRow[$intColumnIndexOfInheritedPermissions]
+        }
 
-    $strType = ''
-    $boolSuccess = Convert-RawCSVElementToString $strType $arrRow[$intColumnIndexOfType]
+        if ($__TREEINCLUDEOWNPERMISSIONS -eq $true) {
+            $strOwnPermissions = ''
+            $boolSuccess = Convert-RawCSVElementToString ([ref]$strOwnPermissions) $arrRow[$intColumnIndexOfOwnPermissions]
+        }
+    }
+    if ($intCounter % $intProgressReportingFrequency -eq 0) {
+        # Add lagging timestamp to queue
+        $queueLaggingTimestamps.Enqueue((Get-Date))
+    }
 }
 
 if ($DoNotCleanupMemory.IsPresent -eq $false) {
