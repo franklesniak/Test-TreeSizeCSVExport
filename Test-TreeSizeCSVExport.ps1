@@ -49,6 +49,7 @@ PowerShell (e.g., using Import-Csv).
 
 param (
     [Parameter(Mandatory = $true)][string]$CSVPath,
+    [Parameter(Mandatory = $false)][string]$PathToOutputCSV = '',
     [Parameter(Mandatory = $false)][string]$ReportPath,
     [Parameter(Mandatory = $false)][switch]$AlsoWriteOutputToConsole,
     [Parameter(Mandatory = $false)][switch]$DoNotCleanupMemory
@@ -327,35 +328,6 @@ function Convert-TreeSizeSizeToUInt64Bytes {
     return $true
 }
 
-function Convert-RawCSVElementToString {
-    $refStrCSVElement = $args[0]
-    $strRawCSVElement = $args[1]
-
-    $boolDoubleQuoteEncapsulation = $false
-    # Check for $strRawCSVElement beginning and ending in double quotation marks
-    if ([string]::IsNullOrEmpty($strRawCSVElement) -eq $true) {
-        $strWorkingCSVElement = ''
-    } else {
-        if ($strRawCSVElement.Length -ge 2) {
-            if (($strRawCSVElement.Substring(0, 1) -eq '"') -and ($strRawCSVElement.Substring($strRawCSVElement.Length - 1, 1) -eq '"')) {
-                $strWorkingCSVElement = $strRawCSVElement.Substring(1, $strRawCSVElement.Length - 2)
-                $boolDoubleQuoteEncapsulation = $true
-            } else {
-                $strWorkingCSVElement = $strRawCSVElement
-            }
-        } else {
-            $strWorkingCSVElement = $strRawCSVElement
-        }
-    }
-
-    if ($boolDoubleQuoteEncapsulation -eq $true) {
-        $strWorkingCSVElement = $strWorkingCSVElement.Replace('""', '"')
-    }
-
-    $refStrCSVElement.Value = $strWorkingCSVElement
-    return $true
-}
-
 function Get-PSVersion {
     <#
     .SYNOPSIS
@@ -545,13 +517,33 @@ if ((Test-Path $CSVPath) -eq $false) {
     return
 }
 
+$strFolderContainingCSV = Split-Path -Path $CSVPath -Parent
+$strCSVFileName = Split-Path -Path $CSVPath -Leaf
+$arrCSVFileNameParts = Split-StringOnLiteralString $strCSVFileName '.csv'
+$strFileNamePrefix = $arrCSVFileNameParts[0]
+
+if ([string]::IsNullOrEmpty($PathToOutputFile) -eq $true) {
+    $strFixedCSVInputFilePath = Join-Path $strFolderContainingCSV ($strFileNamePrefix + '_Fixed.csv')
+} else {
+    $strFixedCSVInputFilePath = $PathToOutputCSV
+}
+
 $versionPS = Get-PSVersion
 
 Write-Verbose 'Loading the TreeSize CSV file into memory. This may take a while...'
 $arrContent = @(Get-Content -Path $CSVPath | Select-Object -Skip 4)
 
-$strHeader = $arrContent[0]
-$arrHeader = Split-StringOnLiteralString $strHeader ','
+Write-Verbose 'Writing the corrected CSV file to disk. This may take a while...'
+$arrContent | Set-Content -Path $strFixedCSVInputFilePath
+$arrContent = $null
+
+if ($DoNotCleanupMemory.IsPresent -eq $false) {
+    Write-Verbose 'Cleaning up memory. This may take a while...'
+    [System.GC]::Collect() # Force garbage collection to free up memory
+}
+
+Write-Verbose 'Importing the CSV into memory. This may take a while...'
+$arrCSV = @(Import-Csv -Path $strFixedCSVInputFilePath)
 
 $hashtableHeaderStatus = @{
     'Full Path' = $false
@@ -568,57 +560,36 @@ $hashtableHeaderStatus = @{
     'Creation Date' = $false
 }
 
+$strNameOfColumnForFullPathOrPath = ''
+
 $listUnmatchedHeaders = New-Object System.Collections.Generic.List[String]
 $listRequiredHeadersNotFound = New-Object System.Collections.Generic.List[String]
-$intColumnIndexOfFullPathOrPath = -1
-$intColumnIndexOfSize = -1
-$intColumnIndexOfAllocated = -1
-$intColumnIndexOfLastModified = -1
-$intColumnIndexOfLastAccessed = -1
-$intColumnIndexOfOwner = -1
-$intColumnIndexOfPermissions = -1
-$intColumnIndexOfInheritedPermissions = -1
-$intColumnIndexOfOwnPermissions = -1
-$intColumnIndexOfType = -1
-$intColumnIndexOfCreationDate = -1
 
-foreach ($strHeaderElement in $arrHeader) {
-    if ($hashtableHeaderStatus.ContainsKey($strHeaderElement)) {
-        $hashtableHeaderStatus[$strHeaderElement] = $true
-        if ($strHeaderElement -eq 'Full Path') {
-            $intColumnIndexOfFullPathOrPath = $arrHeader.IndexOf($strHeaderElement)
-        } elseif ($strHeaderElement -eq 'Path') {
-            if ($intColumnIndexOfFullPathOrPath -eq -1) {
-                $intColumnIndexOfFullPathOrPath = $arrHeader.IndexOf($strHeaderElement)
-            }
-        } elseif ($strHeaderElement -eq 'Size') {
-            $intColumnIndexOfSize = $arrHeader.IndexOf($strHeaderElement)
-        } elseif ($strHeaderElement -eq 'Allocated') {
-            $intColumnIndexOfAllocated = $arrHeader.IndexOf($strHeaderElement)
-        } elseif ($strHeaderElement -eq 'Last Modified') {
-            $intColumnIndexOfLastModified = $arrHeader.IndexOf($strHeaderElement)
-        } elseif ($strHeaderElement -eq 'Last Accessed') {
-            $intColumnIndexOfLastAccessed = $arrHeader.IndexOf($strHeaderElement)
-        } elseif ($strHeaderElement -eq 'Owner') {
-            $intColumnIndexOfOwner = $arrHeader.IndexOf($strHeaderElement)
-        } elseif ($strHeaderElement -eq 'Permissions') {
-            $intColumnIndexOfPermissions = $arrHeader.IndexOf($strHeaderElement)
-        } elseif ($strHeaderElement -eq 'Inherited Permissions') {
-            $intColumnIndexOfInheritedPermissions = $arrHeader.IndexOf($strHeaderElement)
-        } elseif ($strHeaderElement -eq 'Own Permissions') {
-            $intColumnIndexOfOwnPermissions = $arrHeader.IndexOf($strHeaderElement)
-        } elseif ($strHeaderElement -eq 'Type') {
-            $intColumnIndexOfType = $arrHeader.IndexOf($strHeaderElement)
-        } elseif ($strHeaderElement -eq 'Creation Date') {
-            $intColumnIndexOfCreationDate = $arrHeader.IndexOf($strHeaderElement)
+if ($arrCSV.Count -ge 1) {
+    (($arrCSV[0]).PSObject).Properties | ForEach-Object {
+        $strHeaderElement = $_.Name
+        if ($hashtableHeaderStatus.ContainsKey($strHeaderElement)) {
+            $hashtableHeaderStatus.Item($strHeaderElement) = $true
+        } else {
+            $listUnmatchedHeaders.Add($strHeaderElement)
         }
-    } else {
-        $listUnmatchedHeaders.Add($strHeaderElement)
+        if ($strHeaderElement -eq 'Path') {
+            if ([string]::IsNullOrEmpty($strNameOfColumnForFullPathOrPath) -eq $false) {
+                Write-Warning ('Duplicate path column found. The header "' + $strHeaderElement + '" will be used for the full path. The conflicting column header is "' + $strNameOfColumnForFullPathOrPath + '".')
+            }
+            $strNameOfColumnForFullPathOrPath = $strHeaderElement
+        } elseif ($strHeaderElement -eq 'Full Path') {
+            if ([string]::IsNullOrEmpty($strNameOfColumnForFullPathOrPath) -eq $false) {
+                Write-Warning ('Duplicate path column found. The header "' + $strNameOfColumnForFullPathOrPath + '" will be used for the full path. The conflicting column header is "' + $strHeaderElement + '".')
+            } else {
+                $strNameOfColumnForFullPathOrPath = $strHeaderElement
+            }
+        }
     }
 }
 
 # Check $hashtableHeaderStatus for any headers with status $false and report them:
-if ($hashtableHeaderStatus.Item('Full Path') -and $hashtableHeaderStatus.Item('Path')) {
+if (($hashtableHeaderStatus.Item('Full Path') -eq $false) -and ($hashtableHeaderStatus.Item('Path') -eq $false)) {
     $listRequiredHeadersNotFound.Add('Full Path/Path')
 }
 foreach ($strHeaderElement in $hashtableHeaderStatus.Keys) {
@@ -646,8 +617,8 @@ $queueLaggingTimestamps = New-Object System.Collections.Queue
 $queueLaggingTimestamps.Enqueue($timedateStartOfLoop)
 $intProgressReportingFrequency = 400
 
-$intTotalRows = $arrContent.Count
-for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
+$intTotalRows = $arrCSV.Count
+for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
     if (($intCounter -gt 2000) -and ($intCounter % $intProgressReportingFrequency -eq 0)) {
         # Create a progress bar after the first 2000 items have been processed
         $timeDateLagging = $queueLaggingTimestamps.Dequeue()
@@ -655,27 +626,31 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
         $timespanTimeDelta = $datetimeNow - $timeDateLagging
         Write-Progress -Activity 'Loading folder and file data into an in-memory tree' -Status 'Processing' -PercentComplete (($intCounter / $intTotalRows) * 100) -CurrentOperation ('Processing folder ' + $intCounter + ' of ' + $intTotalRows + ' (' + [string]::Format('{0:0.00}', (($intCounter / $intTotalRows) * 100)) + '%)') -SecondsRemaining (($timespanTimeDelta.TotalSeconds / $intCounter) * ($intTotalRows - $intCounter))
     }
-    $strRow = $arrContent[$intCounter]
-    $arrRow = Split-StringOnLiteralString $strRow ','
 
     #region Extract Full Path and Type #############################################
     $boolMinimumElementsExtracted = $false
     $strFullPathOrPath = ''
-    $boolSuccess = Convert-RawCSVElementToString ([ref]$strFullPathOrPath) $arrRow[$intColumnIndexOfFullPathOrPath]
-    if ($boolSuccess -eq $true) {
+    $strFullPathOrPath = @((($arrCSV[$intCounter]).PSObject).Properties) |
+        Where-Object { $_.Name -eq $strNameOfColumnForFullPathOrPath } |
+        ForEach-Object { $_.Value }
+    if ([string]::IsNullOrEmpty($strFullPathOrPath) -eq $true) {
+        $strFullPathOrPath = ''
+    } else {
         $strType = ''
-        $boolSuccess = Convert-RawCSVElementToString ([ref]$strType) $arrRow[$intColumnIndexOfType]
-        if ($boolSuccess -eq $true) {
+        $strType = ($arrCSV[$intCounter]).Type
+        if ([string]::IsNullOrEmpty($strType) -eq $true) {
+            $strType = ''
+        } else {
             $boolMinimumElementsExtracted = $true
         }
     }
     #endregion Extract Full Path and Type #############################################
 
     if ($boolMinimumElementsExtracted -eq $false) {
-        Write-Warning ('Failed to extract the minimum required elements from the following row: ' + $strRow)
+        Write-Warning ('Failed to extract the minimum required elements from the following row: ' + $arrCSV[$intCounter])
     } else {
         #region Create the PSObjectTreeElement #####################################
-        $PSObjectTreeElement = $null
+        $PSObjectTreeElement = New-Object -TypeName 'PSObject'
         if ($strType -eq 'Folder') {
             $boolSuccess = New-PSObjectTreeDirectoryElement ([ref]$PSObjectTreeElement)
         } else {
@@ -690,7 +665,7 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
         #endregion Create the PSObjectTreeElement #####################################
 
         if ($boolSuccess -eq $false) {
-            Write-Warning ('Failed to create a PSObjectTreeElement for the following row: ' + $strRow)
+            Write-Warning ('Failed to create a PSObjectTreeElement for the following row: ' + $arrCSV[$intCounter])
         } else {
             #region Store the Full Path ############################################
             $PSObjectTreeElement.FullPath = $strFullPathOrPath
@@ -784,16 +759,20 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
                         }
                     } else {
                         # Assume this is a file
-                        if ((($refToParentElement.Value).ChildFiles).ContainsKey($strName) -eq $true) {
-                            # This file already exists in the parent folder
-                            # This is a duplicate file
-                            # This is not allowed
-                            Write-Warning ('Duplicate file found: ' + $strFullPathOrPath)
-                            (($refToParentElement.Value).ChildFiles).Item($strName) = [ref]$PSObjectTreeElement
+                        if ($null -eq ($refToParentElement.Value).ChildFiles) {
+                            Write-Warning ('The path "' + $strFullPathOrPath + '" has already been added to the tree. but the parent folder''s ChildFiles element is null. This should not be possible!')
                         } else {
-                            # This file does not already exist in the parent folder
-                            # Add this file to the parent folder
-                            (($refToParentElement.Value).ChildFiles).Add($strName, [ref]$PSObjectTreeElement)
+                            if ((($refToParentElement.Value).ChildFiles).ContainsKey($strName) -eq $true) {
+                                # This file already exists in the parent folder
+                                # This is a duplicate file
+                                # This is not allowed
+                                Write-Warning ('Duplicate file found: ' + $strFullPathOrPath)
+                                (($refToParentElement.Value).ChildFiles).Item($strName) = [ref]$PSObjectTreeElement
+                            } else {
+                                # This file does not already exist in the parent folder
+                                # Add this file to the parent folder
+                                (($refToParentElement.Value).ChildFiles).Add($strName, [ref]$PSObjectTreeElement)
+                            }
                         }
                     }
                 }
@@ -850,9 +829,10 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
 
             if ($__TREEINCLUDESIZE -eq $true) {
                 $strSize = ''
-                $boolSuccess = Convert-RawCSVElementToString ([ref]$strSize) $arrRow[$intColumnIndexOfSize]
-                if ($boolSuccess -ne $true) {
-                    Write-Warning ('Unable to convert size "' + $arrRow[$intColumnIndexOfSize] + '" to string for path "' + $strFullPathOrPath + '"')
+                $strSize = ($arrCSV[$intCounter]).Size
+                if ([string]::IsNullOrEmpty($strSize) -eq $true) {
+                    $strSize = ''
+                    Write-Warning ('Unable to convert size "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     $int64Size = [int64]0
                     $boolSuccess = Convert-TreeSizeSizeToUInt64Bytes ([ref]$int64Size) $strSize
@@ -866,9 +846,10 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
 
             if ($__TREEINCLUDEALLOCATED -eq $true) {
                 $strAllocated = ''
-                $boolSuccess = Convert-RawCSVElementToString ([ref]$strAllocated) $arrRow[$intColumnIndexOfAllocated]
-                if ($boolSuccess -ne $true) {
-                    Write-Warning ('Unable to convert disk allocation "' + $arrRow[$intColumnIndexOfAllocated] + '" to string for path "' + $strFullPathOrPath + '"')
+                $strAllocated = ($arrCSV[$intCounter]).Allocated
+                if ([string]::IsNullOrEmpty($strAllocated) -eq $true) {
+                    $strAllocated = ''
+                    Write-Warning ('Unable to convert disk allocation "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     $int64DiskAllocation = [int64]0
                     $boolSuccess = Convert-TreeSizeSizeToUInt64Bytes ([ref]$int64DiskAllocation) $strAllocated
@@ -882,9 +863,10 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
 
             if ($__TREEINCLUDELASTMODIFIED -eq $true) {
                 $strLastModified = ''
-                $boolSuccess = Convert-RawCSVElementToString ([ref]$strLastModified) $arrRow[$intColumnIndexOfLastModified]
-                if ($boolSuccess -ne $true) {
-                    Write-Warning ('Unable to convert last modified date "' + $arrRow[$intColumnIndexOfLastModified] + '" to string for path "' + $strFullPathOrPath + '"')
+                $strLastModified = ($arrCSV[$intCounter]).LastModified
+                if ([string]::IsNullOrEmpty($strLastModified) -eq $true) {
+                    $strLastModified = ''
+                    Write-Warning ('Unable to convert last modified date "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # TODO: Create a function to do this conversion safely
                     $datetimeLastModified = [datetime]$strLastModified
@@ -894,9 +876,10 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
 
             if ($__TREEINCLUDELASTACCESSED -eq $true) {
                 $strLastAccessed = ''
-                $boolSuccess = Convert-RawCSVElementToString ([ref]$strLastAccessed) $arrRow[$intColumnIndexOfLastAccessed]
-                if ($boolSuccess -ne $true) {
-                    Write-Warning ('Unable to convert last accessed date "' + $arrRow[$intColumnIndexOfLastAccessed] + '" to string for path "' + $strFullPathOrPath + '"')
+                $strLastAccessed = ($arrCSV[$intCounter]).LastAccessed
+                if ([string]::IsNullOrEmpty($strLastAccessed) -eq $true) {
+                    $strLastAccessed = ''
+                    Write-Warning ('Unable to convert last accessed date "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # TODO: Create a function to do this conversion safely
                     $datetimeLastAccessed = [datetime]$strLastAccessed
@@ -906,9 +889,10 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
 
             if ($__TREEINCLUDECREATIONDATE -eq $true) {
                 $strCreationDate = ''
-                $boolSuccess = Convert-RawCSVElementToString ([ref]$strCreationDate) $arrRow[$intColumnIndexOfCreationDate]
-                if ($boolSuccess -ne $true) {
-                    Write-Warning ('Unable to convert creation date "' + $arrRow[$intColumnIndexOfCreationDate] + '" to string for path "' + $strFullPathOrPath + '"')
+                $strCreationDate = ($arrCSV[$intCounter]).CreationDate
+                if ([string]::IsNullOrEmpty($strCreationDate) -eq $true) {
+                    $strCreationDate = ''
+                    Write-Warning ('Unable to convert creation date "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # TODO: Create a function to do this conversion safely
                     $datetimeCreationDate = [datetime]$strCreationDate
@@ -918,9 +902,10 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
 
             if ($__TREEINCLUDEOWNER -eq $true) {
                 $strOwner = ''
-                $boolSuccess = Convert-RawCSVElementToString ([ref]$strOwner) $arrRow[$intColumnIndexOfOwner]
-                if ($boolSuccess -ne $true) {
-                    Write-Warning ('Unable to convert owner "' + $arrRow[$intColumnIndexOfOwner] + '" to string for path "' + $strFullPathOrPath + '"')
+                $strOwner = ($arrCSV[$intCounter]).Owner
+                if ([string]::IsNullOrEmpty($strOwner) -eq $true) {
+                    $strOwner = ''
+                    Write-Warning ('Unable to convert owner "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     $PSObjectTreeElement.Owner = $strOwner
                 }
@@ -928,9 +913,10 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
 
             if ($__TREEINCLUDEPERMISSIONS -eq $true) {
                 $strPermissions = ''
-                $boolSuccess = Convert-RawCSVElementToString ([ref]$strPermissions) $arrRow[$intColumnIndexOfPermissions]
-                if ($boolSuccess -ne $true) {
-                    Write-Warning ('Unable to convert permissions "' + $arrRow[$intColumnIndexOfPermissions] + '" to string for path "' + $strFullPathOrPath + '"')
+                $strPermissions = ($arrCSV[$intCounter]).Permissions
+                if ([string]::IsNullOrEmpty($strPermissions) -eq $true) {
+                    $strPermissions = ''
+                    Write-Warning ('Unable to convert permissions "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # Validate permissions
                     $strWarningMessage = ''
@@ -945,9 +931,10 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
 
             if ($__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
                 $strInheritedPermissions = ''
-                $boolSuccess = Convert-RawCSVElementToString ([ref]$strInheritedPermissions) $arrRow[$intColumnIndexOfInheritedPermissions]
-                if ($boolSuccess -ne $true) {
-                    Write-Warning ('Unable to convert inherited permissions "' + $arrRow[$intColumnIndexOfInheritedPermissions] + '" to string for path "' + $strFullPathOrPath + '"')
+                $strInheritedPermissions = ($arrCSV[$intCounter]).InheritedPermissions
+                if ([string]::IsNullOrEmpty($strInheritedPermissions) -eq $true) {
+                    $strInheritedPermissions = ''
+                    Write-Warning ('Unable to convert inherited permissions "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # Validate permissions
                     $strWarningMessage = ''
@@ -962,9 +949,10 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
 
             if ($__TREEINCLUDEOWNPERMISSIONS -eq $true) {
                 $strOwnPermissions = ''
-                $boolSuccess = Convert-RawCSVElementToString ([ref]$strOwnPermissions) $arrRow[$intColumnIndexOfOwnPermissions]
-                if ($boolSuccess -ne $true) {
-                    Write-Warning ('Unable to convert own permissions "' + $arrRow[$intColumnIndexOfOwnPermissions] + '" to string for path "' + $strFullPathOrPath + '"')
+                $strOwnPermissions = ($arrCSV[$intCounter]).OwnPermissions
+                if ([string]::IsNullOrEmpty($strOwnPermissions) -eq $true) {
+                    $strOwnPermissions = ''
+                    Write-Warning ('Unable to convert own permissions "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # Validate permissions
                     $strWarningMessage = ''
