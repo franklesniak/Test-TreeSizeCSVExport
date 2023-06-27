@@ -650,15 +650,15 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
         Write-Warning ('Failed to extract the minimum required elements from the following row: ' + $arrCSV[$intCounter])
     } else {
         #region Create the PSObjectTreeElement #####################################
-        $PSObjectTreeElement = New-Object -TypeName 'PSObject'
+        $refPSObjectTreeElement = [ref]$null
         if ($strType -eq 'Folder') {
-            $boolSuccess = New-PSObjectTreeDirectoryElement ([ref]$PSObjectTreeElement)
+            $boolSuccess = New-PSObjectTreeDirectoryElement $refPSObjectTreeElement
         } else {
             # Assume file
-            $boolSuccess = New-PSObjectTreeFileElement ([ref]$PSObjectTreeElement)
+            $boolSuccess = New-PSObjectTreeFileElement $refPSObjectTreeElement
             if ($boolSuccess -eq $true) {
                 if ($__TREEINCLUDETYPE -eq $true) {
-                    $PSObjectTreeElement.Type = $strType
+                    ($refPSObjectTreeElement.Value).Type = $strType
                 }
             }
         }
@@ -668,28 +668,28 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
             Write-Warning ('Failed to create a PSObjectTreeElement for the following row: ' + $arrCSV[$intCounter])
         } else {
             #region Store the Full Path ############################################
-            $PSObjectTreeElement.FullPath = $strFullPathOrPath
+            ($refPSObjectTreeElement.Value).FullPath = $strFullPathOrPath
             if ($strType -eq 'Folder') {
                 # This is a folder
                 if ($hashtablePathsToFolderElements.ContainsKey($strFullPathOrPath) -eq $true) {
                     # This path has already been added to the tree
                     Write-Warning ('The following path has already been added to the tree: ' + $strFullPathOrPath)
-                    $hashtablePathsToFolderElements.Item($strFullPathOrPath) = [ref]$PSObjectTreeElement
+                    $hashtablePathsToFolderElements.Item($strFullPathOrPath) = $refPSObjectTreeElement
                 } else {
                     # This path has not yet been added to the tree
-                    $hashtablePathsToFolderElements.Add($strFullPathOrPath, [ref]$PSObjectTreeElement)
+                    $hashtablePathsToFolderElements.Add($strFullPathOrPath, $refPSObjectTreeElement)
                 }
             }
             #endregion Store the Full Path ############################################
 
             #region Get and Store the Parent Path ##################################
             $strParentPath = Split-Path -Path $strFullPathOrPath -Parent
-            $PSObjectTreeElement.ParentPath = $strParentPath
+            ($refPSObjectTreeElement.Value).ParentPath = $strParentPath
             #endregion Get and Store the Parent Path ##################################
 
             #region Get and Store This Object's Name ###############################
             $strName = Split-Path -Path $strFullPathOrPath -Leaf
-            $PSObjectTreeElement.Name = $strName
+            ($refPSObjectTreeElement.Value).Name = $strName
             #endregion Get and Store This Object's Name ###############################
 
             #region Attach to Existing Parent Element, or Store as Unattached ######
@@ -704,19 +704,19 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                             # New unattached parent folder
                             if ($versionPS -ge ([version]'6.0')) {
                                 $listChildElements = New-Object System.Collections.Generic.List[ref]
-                                $listChildElements.Add([ref]$PSObjectTreeElement)
+                                $listChildElements.Add($refPSObjectTreeElement)
                             } else {
                                 $listChildElements = New-Object System.Collections.ArrayList
-                                [void]($listChildElements.Add([ref]$PSObjectTreeElement))
+                                [void]($listChildElements.Add($refPSObjectTreeElement))
                             }
                             $hashtableParentPathsToUnattachedChildDirectories.Add($strParentPath, $listChildElements)
                         } else {
                             # Existing unattached parent folder
                             # Add this element to the existing list
                             if ($versionPS -ge ([version]'6.0')) {
-                                ($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add([ref]$PSObjectTreeElement)
+                                ($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add($refPSObjectTreeElement)
                             } else {
-                                [void](($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add([ref]$PSObjectTreeElement))
+                                [void](($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add($refPSObjectTreeElement))
                             }
                         }
                     } else {
@@ -725,19 +725,19 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                             # New unattached parent folder
                             if ($versionPS -ge ([version]'6.0')) {
                                 $listChildElements = New-Object System.Collections.Generic.List[ref]
-                                $listChildElements.Add([ref]$PSObjectTreeElement)
+                                $listChildElements.Add($refPSObjectTreeElement)
                             } else {
                                 $listChildElements = New-Object System.Collections.ArrayList
-                                [void]($listChildElements.Add([ref]$PSObjectTreeElement))
+                                [void]($listChildElements.Add($refPSObjectTreeElement))
                             }
                             $hashtableParentPathsToUnattachedChildFiles.Add($strParentPath, $listChildElements)
                         } else {
                             # Existing unattached parent folder
                             # Add this element to the existing list
                             if ($versionPS -ge ([version]'6.0')) {
-                                ($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add([ref]$PSObjectTreeElement)
+                                ($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add($refPSObjectTreeElement)
                             } else {
-                                [void](($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add([ref]$PSObjectTreeElement))
+                                [void](($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add($refPSObjectTreeElement))
                             }
                         }
                     }
@@ -751,11 +751,11 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                             # This is a duplicate folder
                             # This is not allowed
                             Write-Warning ('Duplicate folder found: ' + $strFullPathOrPath)
-                            (($refToParentElement.Value).ChildDirectories).Item($strName) = [ref]$PSObjectTreeElement
+                            (($refToParentElement.Value).ChildDirectories).Item($strName) = $refPSObjectTreeElement
                         } else {
                             # This folder does not already exist in the parent folder
                             # Add this folder to the parent folder
-                            (($refToParentElement.Value).ChildDirectories).Add($strName, [ref]$PSObjectTreeElement)
+                            (($refToParentElement.Value).ChildDirectories).Add($strName, $refPSObjectTreeElement)
                         }
                     } else {
                         # Assume this is a file
@@ -767,11 +767,11 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                                 # This is a duplicate file
                                 # This is not allowed
                                 Write-Warning ('Duplicate file found: ' + $strFullPathOrPath)
-                                (($refToParentElement.Value).ChildFiles).Item($strName) = [ref]$PSObjectTreeElement
+                                (($refToParentElement.Value).ChildFiles).Item($strName) = $refPSObjectTreeElement
                             } else {
                                 # This file does not already exist in the parent folder
                                 # Add this file to the parent folder
-                                (($refToParentElement.Value).ChildFiles).Add($strName, [ref]$PSObjectTreeElement)
+                                (($refToParentElement.Value).ChildFiles).Add($strName, $refPSObjectTreeElement)
                             }
                         }
                     }
@@ -781,7 +781,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                 # This path is the root of the tree
                 $refToParentElement = [ref]$null
             }
-            $PSObjectTreeElement.ReferenceToParentElement = $refToParentElement
+            ($refPSObjectTreeElement.Value).ReferenceToParentElement = $refToParentElement
             #endregion Attach to Existing Parent Element, or Store as Unattached ######
 
             #region Attach to Already-Existing Children ############################
@@ -790,7 +790,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                 # This path has unattached child directories
                 $listChildElements = $hashtableParentPathsToUnattachedChildDirectories.Item($strFullPathOrPath)
                 foreach ($refChildElement in $listChildElements) {
-                    ($refChildElement.Value).ReferenceToParentElement = [ref]$PSObjectTreeElement
+                    ($refChildElement.Value).ReferenceToParentElement = $refPSObjectTreeElement
                     if ((($refToParentElement.Value).ChildDirectories).ContainsKey(($refChildElement.Value).Name) -eq $true) {
                         # This folder already exists in the parent folder
                         # This is a duplicate folder
@@ -810,7 +810,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                 # This path has unattached child files
                 $listChildElements = $hashtableParentPathsToUnattachedChildFiles.Item($strFullPathOrPath)
                 foreach ($refChildElement in $listChildElements) {
-                    ($refChildElement.Value).ReferenceToParentElement = [ref]$PSObjectTreeElement
+                    ($refChildElement.Value).ReferenceToParentElement = $refPSObjectTreeElement
                     if ((($refToParentElement.Value).ChildFiles).ContainsKey(($refChildElement.Value).Name) -eq $true) {
                         # This file already exists in the parent folder
                         # This is a duplicate file
@@ -839,7 +839,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                     if ($boolSuccess -ne $true) {
                         Write-Warning ('Unable to convert size "' + $strSize + '" to UInt64 bytes for path "' + $strFullPathOrPath + '"')
                     } else {
-                        $PSObjectTreeElement.SizeInBytesAsReportedByTreeSize = $int64Size
+                        ($refPSObjectTreeElement.Value).SizeInBytesAsReportedByTreeSize = $int64Size
                     }
                 }
             }
@@ -856,7 +856,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                     if ($boolSuccess -ne $true) {
                         Write-Warning ('Unable to convert disk allocation "' + $strAllocated + '" to UInt64 bytes for path "' + $strFullPathOrPath + '"')
                     } else {
-                        $PSObjectTreeElement.DiskAllocationInBytesAsReportedByTreeSize = $int64DiskAllocation
+                        ($refPSObjectTreeElement.Value).DiskAllocationInBytesAsReportedByTreeSize = $int64DiskAllocation
                     }
                 }
             }
@@ -870,7 +870,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                 } else {
                     # TODO: Create a function to do this conversion safely
                     $datetimeLastModified = [datetime]$strLastModified
-                    $PSObjectTreeElement.LastModified = $datetimeLastModified
+                    ($refPSObjectTreeElement.Value).LastModified = $datetimeLastModified
                 }
             }
 
@@ -883,7 +883,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                 } else {
                     # TODO: Create a function to do this conversion safely
                     $datetimeLastAccessed = [datetime]$strLastAccessed
-                    $PSObjectTreeElement.LastAccessed = $datetimeLastAccessed
+                    ($refPSObjectTreeElement.Value).LastAccessed = $datetimeLastAccessed
                 }
             }
 
@@ -896,7 +896,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                 } else {
                     # TODO: Create a function to do this conversion safely
                     $datetimeCreationDate = [datetime]$strCreationDate
-                    $PSObjectTreeElement.CreationDate = $datetimeCreationDate
+                    ($refPSObjectTreeElement.Value).CreationDate = $datetimeCreationDate
                 }
             }
 
@@ -907,7 +907,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                     $strOwner = ''
                     Write-Warning ('Unable to convert owner "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
-                    $PSObjectTreeElement.Owner = $strOwner
+                    ($refPSObjectTreeElement.Value).Owner = $strOwner
                 }
             }
 
@@ -924,7 +924,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                     if ($boolSuccess -eq $false) {
                         Write-Warning ('Encountered invalid permissions while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
                     } else {
-                        $PSObjectTreeElement.Permissions = $strPermissions
+                        ($refPSObjectTreeElement.Value).Permissions = $strPermissions
                     }
                 }
             }
@@ -942,7 +942,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                     if ($boolSuccess -eq $false) {
                         Write-Warning ('Encountered invalid inherited permissions while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
                     } else {
-                        $PSObjectTreeElement.InheritedPermissions = $strInheritedPermissions
+                        ($refPSObjectTreeElement.Value).InheritedPermissions = $strInheritedPermissions
                     }
                 }
             }
@@ -960,7 +960,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                     if ($boolSuccess -eq $false) {
                         Write-Warning ('Encountered invalid own permissions while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
                     } else {
-                        $PSObjectTreeElement.OwnPermissions = $strOwnPermissions
+                        ($refPSObjectTreeElement.Value).OwnPermissions = $strOwnPermissions
                     }
                 }
             }
