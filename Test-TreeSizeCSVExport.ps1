@@ -415,6 +415,130 @@ function Get-PSVersion {
     }
 }
 
+function Test-PermissionValidity {
+    # From Convert-SummarizedNTFSPermissionsToCleanedUpAndRemappedNTFSPermissions.ps1
+
+    $strExistingPermissionLevel = $args[0]
+    $boolFunctionReturn = $false
+
+    $strExistingPermissionLevel = $strExistingPermissionLevel
+    if ($strExistingPermissionLevel -ceq 'full') {
+        return $true
+    } elseif ($strExistingPermissionLevel -ceq 'full (This Container Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -ceq 'full (Child Containers Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -ceq 'full (Child Objects Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -ceq 'full (This Container and Child Containers Only; No Child Objects)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -ceq 'full (This Container and Child Objects Only; No Child Containers)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq 'full (Child Containers and Child Objects Only; Not The Current Object/Container)') {
+        return $true
+    }
+    if ($strExistingPermissionLevel -eq '+r+w+x') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+w+x (This Container Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+w+x (Child Containers Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+w+x (Child Objects Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+w+x (This Container and Child Containers Only; No Child Objects)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+w+x (This Container and Child Objects Only; No Child Containers)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+w+x (Child Containers and Child Objects Only; Not The Current Object/Container)') {
+        return $true
+    }
+    if ($strExistingPermissionLevel -eq '-r-w-x') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-w-x (This Container Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-w-x (Child Containers Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-w-x (Child Objects Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-w-x (This Container and Child Containers Only; No Child Objects)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-w-x (This Container and Child Objects Only; No Child Containers)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-w-x (Child Containers and Child Objects Only; Not The Current Object/Container)') {
+        return $true
+    }
+    if ($strExistingPermissionLevel -eq '+r+x') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+x (This Container Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+x (Child Containers Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+x (Child Objects Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+x (This Container and Child Containers Only; No Child Objects)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+x (This Container and Child Objects Only; No Child Containers)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+r+x (Child Containers and Child Objects Only; Not The Current Object/Container)') {
+        return $true
+    }
+    if ($strExistingPermissionLevel -eq '-r-x') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-x (This Container Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-x (Child Containers Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-x (Child Objects Only)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-x (This Container and Child Containers Only; No Child Objects)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-x (This Container and Child Objects Only; No Child Containers)') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-r-x (Child Containers and Child Objects Only; Not The Current Object/Container)') {
+        return $true
+    }
+
+    return $boolFunctionReturn
+}
+
+function Test-TreeSizePermissionsRecord {
+    $refStringWarningMessage = $args[0]
+    $strPermissions = $args[1]
+
+    $strWorkingWarningMessage = ''
+
+    $arrPermissions = Split-StringOnLiteralString $strPermissions ' | '
+
+    $intPermissionEntryCount = $arrPermissions.Count
+    for ($intCounter = 0; $intCounter -lt $intPermissionEntryCount; $intCounter++) {
+        $arrSinglePermissionEntry = Split-StringOnLiteralString ($arrPermissions[$intCounter]) ': '
+        if ($arrSinglePermissionEntry.Count -ne 2) {
+            if ([string]::IsNullOrEmpty($strWorkingWarningMessage) -eq $false) {
+                $strWorkingWarningMessage += '; the permission entry "' + $arrPermissions[$intCounter] + '" is not in the format "Account: Permission"'
+            } else {
+                $strWorkingWarningMessage = 'The permission entry "' + $arrPermissions[$intCounter] + '" is not in the format "Account: Permission"'
+            }
+        } else {
+            # Correctly formatted permision entry in format "Account: Permission"
+            $strPermission = $arrSinglePermissionEntry[1]
+            $boolPermissionValid = Test-PermissionValidity $strPermission
+            if ($boolPermissionValid -eq $false) {
+                if ([string]::IsNullOrEmpty($strWorkingWarningMessage) -eq $false) {
+                    $strWorkingWarningMessage += '; the permission entry "' + $arrPermissions[$intCounter] + '" is not a known/valid permission entry'
+                } else {
+                    $strWorkingWarningMessage = 'The permission entry "' + $arrPermissions[$intCounter] + '" is not a known/valid permission'
+                }
+            }
+        }
+    }
+
+    if ([string]::IsNullOrEmpty($strWorkingWarningMessage) -eq $false) {
+        $refStringWarningMessage.Value = $strWorkingWarningMessage
+        return $false
+    } else {
+        return $true
+    }
+}
 
 if ((Test-Path $CSVPath) -eq $false) {
     Write-Warning 'The a TreeSize CSV export does not exist at the specified path. Analysis cannot continue.'
@@ -547,7 +671,9 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
     }
     #endregion Extract Full Path and Type #############################################
 
-    if ($boolMinimumElementsExtracted -eq $true) {
+    if ($boolMinimumElementsExtracted -eq $false) {
+        Write-Warning ('Failed to extract the minimum required elements from the following row: ' + $strRow)
+    } else {
         #region Create the PSObjectTreeElement #####################################
         $PSObjectTreeElement = $null
         if ($strType -eq 'Folder') {
@@ -725,10 +851,14 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
             if ($__TREEINCLUDESIZE -eq $true) {
                 $strSize = ''
                 $boolSuccess = Convert-RawCSVElementToString ([ref]$strSize) $arrRow[$intColumnIndexOfSize]
-                if ($boolSuccess -eq $true) {
+                if ($boolSuccess -ne $true) {
+                    Write-Warning ('Unable to convert size "' + $arrRow[$intColumnIndexOfSize] + '" to string for path "' + $strFullPathOrPath + '"')
+                } else {
                     $int64Size = [int64]0
                     $boolSuccess = Convert-TreeSizeSizeToUInt64Bytes ([ref]$int64Size) $strSize
-                    if ($boolSuccess -eq $true) {
+                    if ($boolSuccess -ne $true) {
+                        Write-Warning ('Unable to convert size "' + $strSize + '" to UInt64 bytes for path "' + $strFullPathOrPath + '"')
+                    } else {
                         $PSObjectTreeElement.SizeInBytesAsReportedByTreeSize = $int64Size
                     }
                 }
@@ -737,41 +867,114 @@ for ($intCounter = 1; $intCounter -lt $intTotalRows; $intCounter++) {
             if ($__TREEINCLUDEALLOCATED -eq $true) {
                 $strAllocated = ''
                 $boolSuccess = Convert-RawCSVElementToString ([ref]$strAllocated) $arrRow[$intColumnIndexOfAllocated]
+                if ($boolSuccess -ne $true) {
+                    Write-Warning ('Unable to convert disk allocation "' + $arrRow[$intColumnIndexOfAllocated] + '" to string for path "' + $strFullPathOrPath + '"')
+                } else {
+                    $int64DiskAllocation = [int64]0
+                    $boolSuccess = Convert-TreeSizeSizeToUInt64Bytes ([ref]$int64DiskAllocation) $strAllocated
+                    if ($boolSuccess -ne $true) {
+                        Write-Warning ('Unable to convert disk allocation "' + $strAllocated + '" to UInt64 bytes for path "' + $strFullPathOrPath + '"')
+                    } else {
+                        $PSObjectTreeElement.DiskAllocationInBytesAsReportedByTreeSize = $int64DiskAllocation
+                    }
+                }
             }
 
             if ($__TREEINCLUDELASTMODIFIED -eq $true) {
                 $strLastModified = ''
                 $boolSuccess = Convert-RawCSVElementToString ([ref]$strLastModified) $arrRow[$intColumnIndexOfLastModified]
+                if ($boolSuccess -ne $true) {
+                    Write-Warning ('Unable to convert last modified date "' + $arrRow[$intColumnIndexOfLastModified] + '" to string for path "' + $strFullPathOrPath + '"')
+                } else {
+                    # TODO: Create a function to do this conversion safely
+                    $datetimeLastModified = [datetime]$strLastModified
+                    $PSObjectTreeElement.LastModified = $datetimeLastModified
+                }
             }
 
             if ($__TREEINCLUDELASTACCESSED -eq $true) {
                 $strLastAccessed = ''
                 $boolSuccess = Convert-RawCSVElementToString ([ref]$strLastAccessed) $arrRow[$intColumnIndexOfLastAccessed]
+                if ($boolSuccess -ne $true) {
+                    Write-Warning ('Unable to convert last accessed date "' + $arrRow[$intColumnIndexOfLastAccessed] + '" to string for path "' + $strFullPathOrPath + '"')
+                } else {
+                    # TODO: Create a function to do this conversion safely
+                    $datetimeLastAccessed = [datetime]$strLastAccessed
+                    $PSObjectTreeElement.LastAccessed = $datetimeLastAccessed
+                }
             }
 
             if ($__TREEINCLUDECREATIONDATE -eq $true) {
                 $strCreationDate = ''
                 $boolSuccess = Convert-RawCSVElementToString ([ref]$strCreationDate) $arrRow[$intColumnIndexOfCreationDate]
+                if ($boolSuccess -ne $true) {
+                    Write-Warning ('Unable to convert creation date "' + $arrRow[$intColumnIndexOfCreationDate] + '" to string for path "' + $strFullPathOrPath + '"')
+                } else {
+                    # TODO: Create a function to do this conversion safely
+                    $datetimeCreationDate = [datetime]$strCreationDate
+                    $PSObjectTreeElement.CreationDate = $datetimeCreationDate
+                }
             }
 
             if ($__TREEINCLUDEOWNER -eq $true) {
                 $strOwner = ''
                 $boolSuccess = Convert-RawCSVElementToString ([ref]$strOwner) $arrRow[$intColumnIndexOfOwner]
+                if ($boolSuccess -ne $true) {
+                    Write-Warning ('Unable to convert owner "' + $arrRow[$intColumnIndexOfOwner] + '" to string for path "' + $strFullPathOrPath + '"')
+                } else {
+                    $PSObjectTreeElement.Owner = $strOwner
+                }
             }
 
             if ($__TREEINCLUDEPERMISSIONS -eq $true) {
                 $strPermissions = ''
                 $boolSuccess = Convert-RawCSVElementToString ([ref]$strPermissions) $arrRow[$intColumnIndexOfPermissions]
+                if ($boolSuccess -ne $true) {
+                    Write-Warning ('Unable to convert permissions "' + $arrRow[$intColumnIndexOfPermissions] + '" to string for path "' + $strFullPathOrPath + '"')
+                } else {
+                    # Validate permissions
+                    $strWarningMessage = ''
+                    $boolSuccess = Test-TreeSizePermissionsRecord ([ref]$strWarningMessage) $strPermissions
+                    if ($boolSuccess -eq $false) {
+                        Write-Warning ('Encountered invalid permissions while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
+                    } else {
+                        $PSObjectTreeElement.Permissions = $strPermissions
+                    }
+                }
             }
 
             if ($__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
                 $strInheritedPermissions = ''
                 $boolSuccess = Convert-RawCSVElementToString ([ref]$strInheritedPermissions) $arrRow[$intColumnIndexOfInheritedPermissions]
+                if ($boolSuccess -ne $true) {
+                    Write-Warning ('Unable to convert inherited permissions "' + $arrRow[$intColumnIndexOfInheritedPermissions] + '" to string for path "' + $strFullPathOrPath + '"')
+                } else {
+                    # Validate permissions
+                    $strWarningMessage = ''
+                    $boolSuccess = Test-TreeSizePermissionsRecord ([ref]$strWarningMessage) $strInheritedPermissions
+                    if ($boolSuccess -eq $false) {
+                        Write-Warning ('Encountered invalid inherited permissions while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
+                    } else {
+                        $PSObjectTreeElement.InheritedPermissions = $strInheritedPermissions
+                    }
+                }
             }
 
             if ($__TREEINCLUDEOWNPERMISSIONS -eq $true) {
                 $strOwnPermissions = ''
                 $boolSuccess = Convert-RawCSVElementToString ([ref]$strOwnPermissions) $arrRow[$intColumnIndexOfOwnPermissions]
+                if ($boolSuccess -ne $true) {
+                    Write-Warning ('Unable to convert own permissions "' + $arrRow[$intColumnIndexOfOwnPermissions] + '" to string for path "' + $strFullPathOrPath + '"')
+                } else {
+                    # Validate permissions
+                    $strWarningMessage = ''
+                    $boolSuccess = Test-TreeSizePermissionsRecord ([ref]$strWarningMessage) $strOwnPermissions
+                    if ($boolSuccess -eq $false) {
+                        Write-Warning ('Encountered invalid own permissions while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
+                    } else {
+                        $PSObjectTreeElement.OwnPermissions = $strOwnPermissions
+                    }
+                }
             }
         }
     }
