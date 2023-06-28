@@ -588,6 +588,28 @@ if ($arrCSV.Count -ge 1) {
     }
 }
 
+$strPathSeparator = ''
+$intIndex = 0
+$intTotalRows = $arrCSV.Count
+while ($strPathSeparator -eq '' -and $intIndex -lt $intTotalRows) {
+    $strPath = ((($arrCSV[$intIndex]).PSObject).Properties) |
+        Where-Object { $_.Name -eq $strNameOfColumnForFullPathOrPath } |
+        Select-Object -ExpandProperty Value
+    $strParentPath = Split-Path -Path $strPath -Parent
+    if ([string]::IsNullOrEmpty($strParentPath) -eq $false) {
+        if ($strParentPath.Length -gt 3) {
+            # Not the root of a drive
+            $strPathSeparator = $strPath.Substring($strParentPath.Length, 1)
+        }
+    }
+    $intIndex++
+}
+if ($strPathSeparator -eq '') {
+    # Default to backslash
+    $strPathSeparator = '\'
+}
+Write-Verbose ('The path separator is "' + $strPathSeparator + '".')
+
 # Check $hashtableHeaderStatus for any headers with status $false and report them:
 if (($hashtableHeaderStatus.Item('Full Path') -eq $false) -and ($hashtableHeaderStatus.Item('Path') -eq $false)) {
     $listRequiredHeadersNotFound.Add('Full Path/Path')
@@ -617,7 +639,6 @@ $queueLaggingTimestamps = New-Object System.Collections.Queue
 $queueLaggingTimestamps.Enqueue($timedateStartOfLoop)
 $intProgressReportingFrequency = 400
 
-$intTotalRows = $arrCSV.Count
 for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
     if (($intCounter -gt 2000) -and ($intCounter % $intProgressReportingFrequency -eq 0)) {
         # Create a progress bar after the first 2000 items have been processed
@@ -649,6 +670,15 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
     if ($boolMinimumElementsExtracted -eq $false) {
         Write-Warning ('Failed to extract the minimum required elements from the following row: ' + $arrCSV[$intCounter])
     } else {
+        #region If The Type is a Folder, Ensure it Ends in Backslash ###############
+        if ($strType -eq 'Folder') {
+            # Append a backslash if it's not already there
+            if ($strFullPathOrPath.Substring($strFullPathOrPath.Length - 1, 1) -ne $strPathSeparator) {
+                $strFullPathOrPath = $strFullPathOrPath + $strPathSeparator
+            }
+        }
+        #endregion If The Type is a Folder, Ensure it Ends in Backslash ###############
+
         #region Create the PSObjectTreeElement #####################################
         $refPSObjectTreeElement = [ref]$null
         if ($strType -eq 'Folder') {
@@ -684,6 +714,12 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
 
             #region Get and Store the Parent Path ##################################
             $strParentPath = Split-Path -Path $strFullPathOrPath -Parent
+            if ([string]::IsNullOrEmpty($strParentPath) -eq $false) {
+                # Append a backslash if it's not already there
+                if ($strParentPath.Substring($strParentPath.Length - 1, 1) -ne $strPathSeparator) {
+                    $strParentPath = $strParentPath + $strPathSeparator
+                }
+            }
             ($refPSObjectTreeElement.Value).ParentPath = $strParentPath
             #endregion Get and Store the Parent Path ##################################
 
