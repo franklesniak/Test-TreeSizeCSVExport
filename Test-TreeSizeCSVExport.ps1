@@ -629,6 +629,7 @@ if ($listUnmatchedHeaders.Count -gt 0) {
     Write-Warning ('The following headers were not matched to a known header: ' + $listUnmatchedHeaders)
 }
 
+$hashtableRootElements = @{}
 $hashtablePathsToFolderElements = @{}
 $hashtableParentPathsToUnattachedChildDirectories = @{}
 $hashtableParentPathsToUnattachedChildFiles = @{}
@@ -814,8 +815,16 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                 }
             } else {
                 # This path has no identifiable parent folder
-                # This path is the root of the tree
                 $refToParentElement = [ref]$null
+                # This path is the root of the tree
+                if ($hashtableRootElements.ContainsKey($strFullPathOrPath) -eq $true) {
+                    # This root path has already been added to the tree
+                    Write-Warning ('The path "' + $strFullPathOrPath + '" has already been added as a root element. This should not be possible!')
+                    $hashtableRootElements.Item($strFullPathOrPath) = $refPSObjectTreeElement
+                } else {
+                    # This root path has not yet been added to the tree
+                    $hashtableRootElements.Add($strFullPathOrPath, $refPSObjectTreeElement)
+                }
             }
             ($refPSObjectTreeElement.Value).ReferenceToParentElement = $refToParentElement
             #endregion Attach to Existing Parent Element, or Store as Unattached ######
