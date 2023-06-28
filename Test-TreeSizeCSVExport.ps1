@@ -52,7 +52,8 @@ param (
     [Parameter(Mandatory = $false)][string]$PathToOutputCSV = '',
     [Parameter(Mandatory = $false)][string]$ReportPath,
     [Parameter(Mandatory = $false)][switch]$AlsoWriteOutputToConsole,
-    [Parameter(Mandatory = $false)][switch]$DoNotCleanupMemory
+    [Parameter(Mandatory = $false)][switch]$DoNotCleanupMemory,
+    [Parameter(Mandatory = $false)][double]$SizeToleranceThreshold = 0.01
 )
 
 #region License ####################################################################
@@ -81,8 +82,8 @@ $strThisScriptVersionNumber = [version]'1.0.20230625.0'
 $datetimeStartOfScript = Get-Date
 
 $__TREEINCLUDETYPE = $false
-$__TREEINCLUDESIZE = $false
-$__TREEINCLUDEALLOCATED = $true
+$__TREEINCLUDESIZE = $true
+$__TREEINCLUDEALLOCATED = $false
 $__TREEINCLUDELASTMODIFIED = $false
 $__TREEINCLUDELASTACCESSED = $false
 $__TREEINCLUDECREATIONDATE = $false
@@ -296,6 +297,99 @@ function New-PSObjectTreeFileElement {
     }
 
     $refPSObjectTreeElement.Value = $PSObjectTreeFileElement
+
+    return $true
+}
+
+function Add-RolledUpSizeOfTreeRecursively {
+    $refUInt64RolledUpSizeInBytes = $args[0]
+    $refUInt64RolledUpDiskAllocationInBytes = $args[1]
+    $refPSObjectTreeDirectoryElement = $args[2]
+    $boolRollUpSize = $args[3]
+    $boolRollUpDiskAllocation = $args[4]
+    $boolWarnWhenSizeDifferenceExceedsThreshold = $args[5]
+    $boolReturnErrorWhenSizeDifferenceExceedsThreshold = $args[6]
+    $boolWarnWhenDiskAllocationDifferenceExceedsThreshold = $args[7]
+    $boolReturnErrorWhenDiskAllocationDifferenceExceedsThreshold = $args[8]
+    $doubleThresholdInDecimal = $args[9] # 0.01 for 1%
+
+    if ($__TREEINCLUDESIZE -eq $false) {
+        $boolRollUpSize = $false
+        $boolWarnWhenSizeDifferenceExceedsThreshold = $false
+        $boolReturnErrorWhenSizeDifferenceExceedsThreshold = $false
+    }
+
+    if ($__TREEINCLUDEALLOCATED -eq $false) {
+        $boolRollUpDiskAllocation = $false
+        $boolWarnWhenDiskAllocationDifferenceExceedsThreshold = $false
+        $boolReturnErrorWhenDiskAllocationDifferenceExceedsThreshold = $false
+    }
+
+    $uint64RunningTotalSizeInBytes = [uint64]0
+    $uint64RunningTotalDiskAllocationInBytes = [uint64]0
+
+    # Process all the child folders recursively
+    @((($refPSObjectTreeDirectoryElement.Value).ChildDirectories).Keys) | ForEach-Object {
+        # $_ is the child directory name
+        $refPSObjectTreeChildDirectoryElement = (($refPSObjectTreeDirectoryElement.Value).ChildDirectories).Item($_)
+        $uint64ThisChildFolderSizeInBytes = [uint64]0
+        $uint64ThisChildFolderDiskAllocationInBytes = [uint64]0
+        $boolSuccess = Add-RolledUpSizeOfTreeRecursively ([ref]$uint64ThisChildFolderSizeInBytes) ([ref]$uint64ThisChildFolderDiskAllocationInBytes) $refPSObjectTreeChildDirectoryElement $boolRollUpSize $boolRollUpDiskAllocation $boolWarnWhenSizeDifferenceExceedsThreshold $boolReturnErrorWhenSizeDifferenceExceedsThreshold $boolWarnWhenDiskAllocationDifferenceExceedsThreshold $boolReturnErrorWhenDiskAllocationDifferenceExceedsThreshold $doubleThresholdInDecimal
+        if ($boolSuccess -eq $false) {
+            return $false
+        } else {
+            if ($boolRollUpSize -eq $true) {
+                $uint64RunningTotalSizeInBytes += $uint64ThisChildFolderSizeInBytes
+            }
+            if ($boolRollUpDiskAllocation -eq $true) {
+                $uint64RunningTotalDiskAllocationInBytes += $uint64ThisChildFolderDiskAllocationInBytes
+            }
+        }
+    }
+
+    # Process all the child files
+    @((($refPSObjectTreeDirectoryElement.Value).ChildFiles).Keys) | ForEach-Object {
+        # $_ is the child file name
+        $refPSObjectTreeChildFileElement = (($refPSObjectTreeDirectoryElement.Value).ChildFiles).Item($_)
+
+        if ($boolRollUpSize -eq $true) {
+            $uint64RunningTotalSizeInBytes += ($refPSObjectTreeChildFileElement.Value).SizeInBytesAsReportedByTreeSize
+        }
+        if ($boolRollUpDiskAllocation -eq $true) {
+            $uint64RunningTotalDiskAllocationInBytes += ($refPSObjectTreeChildFileElement.Value).DiskAllocationInBytesAsReportedByTreeSize
+        }
+    }
+
+    if ($boolRollUpSize -eq $true) {
+        ($refPSObjectTreeDirectoryElement.Value).RolledUpSizeInBytes = $uint64RunningTotalSizeInBytes
+        $refUInt64RolledUpSizeInBytes.Value = $uint64RunningTotalSizeInBytes
+
+        if ($boolWarnWhenSizeDifferenceExceedsThreshold -eq $true) {
+            $uint64SizeInBytesAsReportedByTreeSizeLowWatermark = [uint64](($refPSObjectTreeDirectoryElement.Value).SizeInBytesAsReportedByTreeSize * (1 - $doubleThresholdInDecimal))
+            $uint64SizeInBytesAsReportedByTreeSizeHighWatermark = [uint64](($refPSObjectTreeDirectoryElement.Value).SizeInBytesAsReportedByTreeSize * (1 + $doubleThresholdInDecimal))
+            if (($uint64RunningTotalSizeInBytes -lt $uint64SizeInBytesAsReportedByTreeSizeLowWatermark) -or ($uint64RunningTotalSizeInBytes -gt $uint64SizeInBytesAsReportedByTreeSizeHighWatermark)) {
+                Write-Warning ('The rolled up size of the folder "' + ($refPSObjectTreeDirectoryElement.Value).FullPath + '" is ' + $uint64RunningTotalSizeInBytes + ' bytes, which is ' + ($uint64RunningTotalSizeInBytes - ($refPSObjectTreeDirectoryElement.Value).SizeInBytesAsReportedByTreeSize) + ' bytes different from the size reported by TreeSize (' + ($refPSObjectTreeDirectoryElement.Value).SizeInBytesAsReportedByTreeSize + ' bytes). Most likely this is because TreeSize does not have access to all the files or subfolders in the folder.')
+                if ($boolReturnErrorWhenSizeDifferenceExceedsThreshold -eq $true) {
+                    return $false
+                }
+            }
+        }
+    }
+    if ($boolRollUpDiskAllocation -eq $true) {
+        ($refPSObjectTreeDirectoryElement.Value).RolledUpDiskAllocationInBytes = $uint64RunningTotalDiskAllocationInBytes
+        $refUInt64RolledUpDiskAllocationInBytes.Value = $uint64RunningTotalDiskAllocationInBytes
+
+        if ($boolWarnWhenDiskAllocationDifferenceExceedsThreshold -eq $true) {
+            $uint64DiskAllocationInBytesAsReportedByTreeSizeLowWatermark = [uint64](($refPSObjectTreeDirectoryElement.Value).DiskAllocationInBytesAsReportedByTreeSize * (1 - $doubleThresholdInDecimal))
+            $uint64DiskAllocationInBytesAsReportedByTreeSizeHighWatermark = [uint64](($refPSObjectTreeDirectoryElement.Value).DiskAllocationInBytesAsReportedByTreeSize * (1 + $doubleThresholdInDecimal))
+            if (($uint64RunningTotalDiskAllocationInBytes -lt $uint64DiskAllocationInBytesAsReportedByTreeSizeLowWatermark) -or ($uint64RunningTotalDiskAllocationInBytes -gt $uint64DiskAllocationInBytesAsReportedByTreeSizeHighWatermark)) {
+                Write-Warning ('The rolled up disk allocation of the folder "' + ($refPSObjectTreeDirectoryElement.Value).FullPath + '" is ' + $uint64RunningTotalDiskAllocationInBytes + ' bytes, which is ' + ($uint64RunningTotalDiskAllocationInBytes - ($refPSObjectTreeDirectoryElement.Value).DiskAllocationInBytesAsReportedByTreeSize) + ' bytes different from the disk allocation reported by TreeSize (' + ($refPSObjectTreeDirectoryElement.Value).DiskAllocationInBytesAsReportedByTreeSize + ' bytes). Most likely this is because TreeSize does not have access to all the files or subfolders in the folder.')
+                if ($boolReturnErrorWhenDiskAllocationDifferenceExceedsThreshold -eq $true) {
+                    return $false
+                }
+            }
+        }
+    }
 
     return $true
 }
@@ -740,42 +834,32 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                         if ($hashtableParentPathsToUnattachedChildDirectories.ContainsKey($strParentPath) -eq $false) {
                             # New unattached parent folder
                             if ($versionPS -ge ([version]'6.0')) {
-                                $listChildElements = New-Object System.Collections.Generic.List[ref]
-                                $listChildElements.Add($refPSObjectTreeElement)
+                                $hashtableParentPathsToUnattachedChildDirectories.Add($strParentPath, (New-Object System.Collections.Generic.List[ref]))
                             } else {
-                                $listChildElements = New-Object System.Collections.ArrayList
-                                [void]($listChildElements.Add($refPSObjectTreeElement))
+                                $hashtableParentPathsToUnattachedChildDirectories.Add($strParentPath, (New-Object System.Collections.ArrayList))
                             }
-                            $hashtableParentPathsToUnattachedChildDirectories.Add($strParentPath, $listChildElements)
+                        }
+                        # Add this element to the existing list
+                        if ($versionPS -ge ([version]'6.0')) {
+                            ($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add($refPSObjectTreeElement)
                         } else {
-                            # Existing unattached parent folder
-                            # Add this element to the existing list
-                            if ($versionPS -ge ([version]'6.0')) {
-                                ($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add($refPSObjectTreeElement)
-                            } else {
-                                [void](($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add($refPSObjectTreeElement))
-                            }
+                            [void](($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add($refPSObjectTreeElement))
                         }
                     } else {
                         # Assume file
                         if ($hashtableParentPathsToUnattachedChildFiles.ContainsKey($strParentPath) -eq $false) {
                             # New unattached parent folder
                             if ($versionPS -ge ([version]'6.0')) {
-                                $listChildElements = New-Object System.Collections.Generic.List[ref]
-                                $listChildElements.Add($refPSObjectTreeElement)
+                                $hashtableParentPathsToUnattachedChildFiles.Add($strParentPath, (New-Object System.Collections.Generic.List[ref]))
                             } else {
-                                $listChildElements = New-Object System.Collections.ArrayList
-                                [void]($listChildElements.Add($refPSObjectTreeElement))
+                                $hashtableParentPathsToUnattachedChildFiles.Add($strParentPath, (New-Object System.Collections.ArrayList))
                             }
-                            $hashtableParentPathsToUnattachedChildFiles.Add($strParentPath, $listChildElements)
+                        }
+                        # Add this element to the existing list
+                        if ($versionPS -ge ([version]'6.0')) {
+                            ($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add($refPSObjectTreeElement)
                         } else {
-                            # Existing unattached parent folder
-                            # Add this element to the existing list
-                            if ($versionPS -ge ([version]'6.0')) {
-                                ($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add($refPSObjectTreeElement)
-                            } else {
-                                [void](($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add($refPSObjectTreeElement))
-                            }
+                            [void](($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add($refPSObjectTreeElement))
                         }
                     }
                 } else {
@@ -879,7 +963,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                     $strSize = ''
                     Write-Warning ('Unable to convert size "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
-                    $int64Size = [int64]0
+                    $int64Size = [uint64]0
                     $boolSuccess = Convert-TreeSizeSizeToUInt64Bytes ([ref]$int64Size) $strSize
                     if ($boolSuccess -ne $true) {
                         Write-Warning ('Unable to convert size "' + $strSize + '" to UInt64 bytes for path "' + $strFullPathOrPath + '"')
@@ -896,7 +980,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
                     $strAllocated = ''
                     Write-Warning ('Unable to convert disk allocation "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
-                    $int64DiskAllocation = [int64]0
+                    $int64DiskAllocation = [uint64]0
                     $boolSuccess = Convert-TreeSizeSizeToUInt64Bytes ([ref]$int64DiskAllocation) $strAllocated
                     if ($boolSuccess -ne $true) {
                         Write-Warning ('Unable to convert disk allocation "' + $strAllocated + '" to UInt64 bytes for path "' + $strFullPathOrPath + '"')
@@ -1014,6 +1098,49 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
     if ($intCounter % $intProgressReportingFrequency -eq 0) {
         # Add lagging timestamp to queue
         $queueLaggingTimestamps.Enqueue((Get-Date))
+    }
+}
+
+# Set universal properties for size and disk allocation tallying
+$boolRollUpSize = $true
+$boolRollUpDiskAllocation = $false
+$boolWarnWhenSizeDifferenceExceedsThreshold = $true
+$boolReturnErrorWhenSizeDifferenceExceedsThreshold = $false
+$boolWarnWhenDiskAllocationDifferenceExceedsThreshold = $true
+$boolReturnErrorWhenDiskAllocationDifferenceExceedsThreshold = $false
+$doubleThresholdInDecimal = $SizeToleranceThreshold
+
+$strVerboseMessage = 'Rolling up file/folder sizes within root path '
+
+# Process the root elements' size allocations if present
+@($hashtableRootElements.Keys) | ForEach-Object {
+    $strRootPath = $_
+    $refPSObjectTreeRootElement = $hashtableRootElements.Item($strRootPath)
+    Write-Verbose ($strVerboseMessage + '"' + $strRootPath + '"...')
+
+    $uint64ThisFolderSizeInBytes = [uint64]0
+    $uint64ThisFolderDiskAllocationInBytes = [uint64]0
+
+    $boolSuccess = Add-RolledUpSizeOfTreeRecursively ([ref]$uint64ThisFolderSizeInBytes) ([ref]$uint64ThisFolderDiskAllocationInBytes) $refPSObjectTreeRootElement $boolRollUpSize $boolRollUpDiskAllocation $boolWarnWhenSizeDifferenceExceedsThreshold $boolReturnErrorWhenSizeDifferenceExceedsThreshold $boolWarnWhenDiskAllocationDifferenceExceedsThreshold $boolReturnErrorWhenDiskAllocationDifferenceExceedsThreshold $doubleThresholdInDecimal
+    if ($boolSuccess -eq $false) {
+        Write-Warning ('Encountered an error while rolling up size and disk allocation for root path "' + $strRootPath + '"')
+    }
+}
+
+$strVerboseMessage = 'Rolling up top-level folder (not attached to parent folder) file/folder sizes '
+@($hashtableParentPathsToUnattachedChildDirectories.Keys) | ForEach-Object {
+    @($hashtableParentPathsToUnattachedChildDirectories.Item($_)) | ForEach-Object {
+        $refPSObjectTreeRootElement = $_
+        $strRootPath = ($refPSObjectTreeRootElement.Value).FullPath
+        Write-Verbose ($strVerboseMessage + '"' + $strRootPath + '"...')
+
+        $uint64ThisFolderSizeInBytes = [uint64]0
+        $uint64ThisFolderDiskAllocationInBytes = [uint64]0
+
+        $boolSuccess = Add-RolledUpSizeOfTreeRecursively ([ref]$uint64ThisFolderSizeInBytes) ([ref]$uint64ThisFolderDiskAllocationInBytes) $refPSObjectTreeRootElement $boolRollUpSize $boolRollUpDiskAllocation $boolWarnWhenSizeDifferenceExceedsThreshold $boolReturnErrorWhenSizeDifferenceExceedsThreshold $boolWarnWhenDiskAllocationDifferenceExceedsThreshold $boolReturnErrorWhenDiskAllocationDifferenceExceedsThreshold $doubleThresholdInDecimal
+        if ($boolSuccess -eq $false) {
+            Write-Warning ('Encountered an error while rolling up size and disk allocation for root path "' + $strRootPath + '"')
+        }
     }
 }
 
