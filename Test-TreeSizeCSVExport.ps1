@@ -490,77 +490,17 @@ function Test-PermissionValidity {
     $strExistingPermissionLevel = $strExistingPermissionLevel
     if ($strExistingPermissionLevel -ceq 'full') {
         return $true
-    } elseif ($strExistingPermissionLevel -ceq 'full (This Container Only)') {
+    } elseif ($strExistingPermissionLevel -eq '+r+w+x') {
         return $true
-    } elseif ($strExistingPermissionLevel -ceq 'full (Child Containers Only)') {
+    } elseif ($strExistingPermissionLevel -eq '-r-w-x') {
         return $true
-    } elseif ($strExistingPermissionLevel -ceq 'full (Child Objects Only)') {
+    } elseif ($strExistingPermissionLevel -eq '+r+x') {
         return $true
-    } elseif ($strExistingPermissionLevel -ceq 'full (This Container and Child Containers Only; No Child Objects)') {
+    } elseif ($strExistingPermissionLevel -eq '-r-x') {
         return $true
-    } elseif ($strExistingPermissionLevel -ceq 'full (This Container and Child Objects Only; No Child Containers)') {
+    } elseif ($strExistingPermissionLevel -eq '+r') {
         return $true
-    } elseif ($strExistingPermissionLevel -eq 'full (Child Containers and Child Objects Only; Not The Current Object/Container)') {
-        return $true
-    }
-    if ($strExistingPermissionLevel -eq '+r+w+x') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+w+x (This Container Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+w+x (Child Containers Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+w+x (Child Objects Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+w+x (This Container and Child Containers Only; No Child Objects)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+w+x (This Container and Child Objects Only; No Child Containers)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+w+x (Child Containers and Child Objects Only; Not The Current Object/Container)') {
-        return $true
-    }
-    if ($strExistingPermissionLevel -eq '-r-w-x') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-w-x (This Container Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-w-x (Child Containers Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-w-x (Child Objects Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-w-x (This Container and Child Containers Only; No Child Objects)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-w-x (This Container and Child Objects Only; No Child Containers)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-w-x (Child Containers and Child Objects Only; Not The Current Object/Container)') {
-        return $true
-    }
-    if ($strExistingPermissionLevel -eq '+r+x') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+x (This Container Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+x (Child Containers Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+x (Child Objects Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+x (This Container and Child Containers Only; No Child Objects)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+x (This Container and Child Objects Only; No Child Containers)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '+r+x (Child Containers and Child Objects Only; Not The Current Object/Container)') {
-        return $true
-    }
-    if ($strExistingPermissionLevel -eq '-r-x') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-x (This Container Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-x (Child Containers Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-x (Child Objects Only)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-x (This Container and Child Containers Only; No Child Objects)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-x (This Container and Child Objects Only; No Child Containers)') {
-        return $true
-    } elseif ($strExistingPermissionLevel -eq '-r-x (Child Containers and Child Objects Only; Not The Current Object/Container)') {
+    } elseif ($strExistingPermissionLevel -eq '-r') {
         return $true
     }
 
