@@ -740,7 +740,8 @@ for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
         $timeDateLagging = $queueLaggingTimestamps.Dequeue()
         $datetimeNow = Get-Date
         $timespanTimeDelta = $datetimeNow - $timeDateLagging
-        Write-Progress -Activity 'Loading folder and file data into an in-memory tree' -Status 'Processing' -PercentComplete (($intCounter / $intTotalRows) * 100) -CurrentOperation ('Processing folder ' + $intCounter + ' of ' + $intTotalRows + ' (' + [string]::Format('{0:0.00}', (($intCounter / $intTotalRows) * 100)) + '%)') -SecondsRemaining (($timespanTimeDelta.TotalSeconds / $intCounter) * ($intTotalRows - $intCounter))
+        $intNumberOfItemsProcessedInTimespan = $intProgressReportingFrequency * ($queueLaggingTimestamps.Count + 1)
+        Write-Progress -Activity 'Loading folder and file data into an in-memory tree' -Status 'Processing' -PercentComplete (($intCounter / $intTotalRows) * 100) -CurrentOperation ('Testing folder/file TreeSize record ' + $intCounter + ' of ' + $intTotalRows + ' (' + [string]::Format('{0:0.00}', (($intCounter / $intTotalRows) * 100)) + '%)') -SecondsRemaining (($timespanTimeDelta.TotalSeconds / $intNumberOfItemsProcessedInTimespan) * ($intTotalRows - $intCounter))
     }
 
     #region Extract Full Path and Type #############################################
