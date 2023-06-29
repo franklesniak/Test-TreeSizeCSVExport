@@ -668,21 +668,34 @@ $hashtablePathsToFolderElements = @{}
 $hashtableParentPathsToUnattachedChildDirectories = @{}
 $hashtableParentPathsToUnattachedChildFiles = @{}
 
+#region Collect Stats/Objects Needed for Writing Progress ##########################
+$intProgressReportingFrequency = 400
+$intTotalItems = $intTotalRows
+$strProgressActivity = 'Testing TreeSize CSV file for errors'
+$strProgressStatus = 'Loading folder and file data into an in-memory tree'
+$strProgressCurrentOperationPrefix = 'Processing item'
 $timedateStartOfLoop = Get-Date
 # Create a queue for storing lagging timestamps for ETA calculation
 $queueLaggingTimestamps = New-Object System.Collections.Queue
 $queueLaggingTimestamps.Enqueue($timedateStartOfLoop)
-$intProgressReportingFrequency = 400
+#endregion Collect Stats/Objects Needed for Writing Progress ##########################
 
-for ($intCounter = 0; $intCounter -lt $intTotalRows; $intCounter++) {
-    if (($intCounter -gt 2000) -and ($intCounter % $intProgressReportingFrequency -eq 0)) {
+Write-Verbose ($strProgressStatus + '...')
+
+for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
+    #region Report Progress ########################################################
+    $intCurrentItemNumber = $intCounter + 1 # Forward direction for loop
+    if (($intCurrentItemNumber -ge 2000) -and ($intCurrentItemNumber % $intProgressReportingFrequency -eq 0)) {
         # Create a progress bar after the first 2000 items have been processed
         $timeDateLagging = $queueLaggingTimestamps.Dequeue()
         $datetimeNow = Get-Date
         $timespanTimeDelta = $datetimeNow - $timeDateLagging
         $intNumberOfItemsProcessedInTimespan = $intProgressReportingFrequency * ($queueLaggingTimestamps.Count + 1)
-        Write-Progress -Activity 'Loading folder and file data into an in-memory tree' -Status 'Processing' -PercentComplete (($intCounter / $intTotalRows) * 100) -CurrentOperation ('Testing folder/file TreeSize record ' + $intCounter + ' of ' + $intTotalRows + ' (' + [string]::Format('{0:0.00}', (($intCounter / $intTotalRows) * 100)) + '%)') -SecondsRemaining (($timespanTimeDelta.TotalSeconds / $intNumberOfItemsProcessedInTimespan) * ($intTotalRows - $intCounter))
+        $doublePercentageComplete = ($intCurrentItemNumber - 1) / $intTotalItems
+        $intItemsRemaining = $intTotalItems - $intCurrentItemNumber + 1
+        Write-Progress -Activity $strProgressActivity -Status $strProgressStatus -PercentComplete ($doublePercentageComplete * 100) -CurrentOperation ($strProgressCurrentOperationPrefix + ' ' + $intCurrentItemNumber + ' of ' + $intTotalItems + ' (' + [string]::Format('{0:0.00}', ($doublePercentageComplete * 100)) + '%)') -SecondsRemaining (($timespanTimeDelta.TotalSeconds / $intNumberOfItemsProcessedInTimespan) * $intItemsRemaining)
     }
+    #endregion Report Progress ########################################################
 
     #region Extract Full Path and Type #############################################
     $boolMinimumElementsExtracted = $false
