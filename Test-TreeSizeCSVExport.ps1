@@ -550,9 +550,9 @@ function Test-TreeSizePermissionsRecord {
             $boolPermissionValid = Test-PermissionValidity $strPermission
             if ($boolPermissionValid -eq $false) {
                 if ([string]::IsNullOrEmpty($strWorkingWarningMessage) -eq $false) {
-                    $strWorkingWarningMessage += '; the permission entry "' + $arrPermissions[$intCounter] + '" is not a known/valid permission entry'
+                    $strWorkingWarningMessage += '; the permission entry "' + $arrPermissions[$intCounter] + '" is not a known/valid'
                 } else {
-                    $strWorkingWarningMessage = 'The permission entry "' + $arrPermissions[$intCounter] + '" is not a known/valid permission'
+                    $strWorkingWarningMessage = 'The permission entry "' + $arrPermissions[$intCounter] + '" is not known/valid'
                 }
             }
         }
