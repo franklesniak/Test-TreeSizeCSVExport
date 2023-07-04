@@ -92,6 +92,8 @@ $__TREEINCLUDEPERMISSIONS = $true
 $__TREEINCLUDEINHERITEDPERMISSIONS = $false
 $__TREEINCLUDEOWNPERMISSIONS = $false
 
+$boolDebug = $false
+
 function Split-StringOnLiteralString {
     # Split-StringOnLiteralString is designed to split a string the way the way that I
     # expected it to be done - using a literal string (as opposed to regex). It's also
@@ -333,7 +335,7 @@ function Add-RolledUpSizeOfTreeRecursively {
     }
 
     # Process all the child folders recursively
-    @((($refPSObjectTreeDirectoryElement.Value).ChildDirectories).Keys) | ForEach-Object {
+    @((($refPSObjectTreeDirectoryElement.Value).ChildDirectories).PSObject.Properties | Where-Object { $_.Name -eq 'Keys' } | ForEach-Object { $_.Value }) | ForEach-Object {
         # $_ is the child directory name
         $refPSObjectTreeChildDirectoryElement = [ref]$null
         if ([string]::IsNullOrEmpty($_) -eq $false) {
@@ -355,7 +357,7 @@ function Add-RolledUpSizeOfTreeRecursively {
     }
 
     # Process all the child files
-    @((($refPSObjectTreeDirectoryElement.Value).ChildFiles).Keys) | ForEach-Object {
+    @((($refPSObjectTreeDirectoryElement.Value).ChildFiles).PSObject.Properties | Where-Object { $_.Name -eq 'Keys' } | ForEach-Object { $_.Value }) | ForEach-Object {
         # $_ is the child file name
         $refPSObjectTreeChildFileElement = [ref]$null
         if ([string]::IsNullOrEmpty($_) -eq $false) {
@@ -748,12 +750,22 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
         }
         #endregion If The Type is a Folder, Ensure it Ends in Backslash ###############
 
+        if ($boolDebug -eq $true) {
+            Write-Debug ('Processing the following path: "' + $strFullPathOrPath + '"...')
+        }
+
         #region Create the PSObjectTreeElement #####################################
         $refPSObjectTreeElement = [ref]$null
         if ($strType -eq 'Folder') {
+            if ($boolDebug -eq $true) {
+                Write-Debug ('Creating a PSObjectTreeElement for a folder...')
+            }
             $boolSuccess = New-PSObjectTreeDirectoryElement $refPSObjectTreeElement
         } else {
             # Assume file
+            if ($boolDebug -eq $true) {
+                Write-Debug ('Creating a PSObjectTreeElement for a file (type = "' + $strType + '")...')
+            }
             $boolSuccess = New-PSObjectTreeFileElement $refPSObjectTreeElement
             if ($boolSuccess -eq $true) {
                 if ($__TREEINCLUDETYPE -eq $true) {
@@ -776,6 +788,9 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
                     $hashtablePathsToFolderElements.Item($strFullPathOrPath) = $refPSObjectTreeElement
                 } else {
                     # This path has not yet been added to the tree
+                    if ($boolDebug -eq $true) {
+                        Write-Debug ('Adding the element to the hashtable of paths to folder elements...')
+                    }
                     $hashtablePathsToFolderElements.Add($strFullPathOrPath, $refPSObjectTreeElement)
                 }
             }
@@ -788,6 +803,9 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
                 if ($strParentPath.Substring($strParentPath.Length - 1, 1) -ne $strPathSeparator) {
                     $strParentPath = $strParentPath + $strPathSeparator
                 }
+            }
+            if ($boolDebug -eq $true) {
+                Write-Debug ('Parent path = "' + $strParentPath + '"')
             }
             ($refPSObjectTreeElement.Value).ParentPath = $strParentPath
             #endregion Get and Store the Parent Path ##################################
@@ -866,7 +884,14 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
                             } else {
                                 # This file does not already exist in the parent folder
                                 # Add this file to the parent folder
+                                if ($boolDebug -eq $true) {
+                                    Write-Debug('Adding file "' + $strName + '" to folder "' + $strParentPath + '"')
+                                    Write-Debug('ChildFiles before adding: ' + (($refToParentElement.Value).ChildFiles).PSObject.Properties | Where-Object { $_.Name -eq 'Keys' } | ForEach-Object { $_.Value })
+                                }
                                 (($refToParentElement.Value).ChildFiles).Add($strName, $refPSObjectTreeElement)
+                                if ($boolDebug -eq $true) {
+                                    Write-Debug('ChildFiles after adding: ' + (($refToParentElement.Value).ChildFiles).PSObject.Properties | Where-Object { $_.Name -eq 'Keys' } | ForEach-Object { $_.Value })
+                                }
                             }
                         }
                     }
