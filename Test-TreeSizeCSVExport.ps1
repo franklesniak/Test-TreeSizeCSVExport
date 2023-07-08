@@ -77,9 +77,13 @@ param (
 # OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endregion License ####################################################################
 
-$strThisScriptVersionNumber = [version]'1.0.20230628.0'
+$strThisScriptVersionNumber = [version]'1.0.20230708.0'
 
 $datetimeStartOfScript = Get-Date
+
+# TODO: Check for "attributes" field
+# TODO: Add attributes to tree
+# TODO: Warn when encrypted attribute is set
 
 $__TREEINCLUDETYPE = $false
 $__TREEINCLUDESIZE = $true
