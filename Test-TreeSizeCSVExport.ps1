@@ -84,6 +84,7 @@ $datetimeStartOfScript = Get-Date
 # TODO: Check for "attributes" field
 # TODO: Add attributes to tree
 # TODO: Warn when encrypted attribute is set
+# TODO: Warn when the principal is "The trust relationship between the primary domain and the trusted domain failed"
 
 $__TREEINCLUDETYPE = $false
 $__TREEINCLUDESIZE = $true
