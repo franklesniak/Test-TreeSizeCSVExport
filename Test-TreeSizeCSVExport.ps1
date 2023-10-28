@@ -77,14 +77,9 @@ param (
 # OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endregion License ####################################################################
 
-$strThisScriptVersionNumber = [version]'1.0.20230708.0'
+$strThisScriptVersionNumber = [version]'1.1.20231028.0'
 
 $datetimeStartOfScript = Get-Date
-
-# TODO: Check for "attributes" field
-# TODO: Add attributes to tree
-# TODO: Warn when encrypted attribute is set
-# TODO: Warn when the principal is "The trust relationship between the primary domain and the trusted domain failed"
 
 $__TREEINCLUDETYPE = $false
 $__TREEINCLUDESIZE = $true
@@ -392,7 +387,7 @@ function Add-RolledUpSizeOfTreeRecursively {
             $uint64SizeInBytesAsReportedByTreeSizeLowWatermark = [uint64](($refPSObjectTreeDirectoryElement.Value).SizeInBytesAsReportedByTreeSize * (1 - $doubleThresholdInDecimal))
             $uint64SizeInBytesAsReportedByTreeSizeHighWatermark = [uint64](($refPSObjectTreeDirectoryElement.Value).SizeInBytesAsReportedByTreeSize * (1 + $doubleThresholdInDecimal))
             if ($uint64RunningTotalSizeInBytes -lt $uint64SizeInBytesAsReportedByTreeSizeLowWatermark) {
-                Write-Warning ('The rolled up size of the folder "' + ($refPSObjectTreeDirectoryElement.Value).FullPath + '" is ' + $uint64RunningTotalSizeInBytes + ' bytes, which is ' + (($refPSObjectTreeDirectoryElement.Value).SizeInBytesAsReportedByTreeSize - $uint64RunningTotalSizeInBytes) + ' bytes LESS THAN the size reported by TreeSize (' + ($refPSObjectTreeDirectoryElement.Value).SizeInBytesAsReportedByTreeSize + ' bytes). Most likely this is because TreeSize does not have access to all the files or subfolders in the folder.')
+                Write-Warning ('The rolled up size of the folder "' + ($refPSObjectTreeDirectoryElement.Value).FullPath + '" is ' + $uint64RunningTotalSizeInBytes + ' bytes, which is ' + (($refPSObjectTreeDirectoryElement.Value).SizeInBytesAsReportedByTreeSize - $uint64RunningTotalSizeInBytes) + ' bytes LESS THAN the size reported by TreeSize (' + ($refPSObjectTreeDirectoryElement.Value).SizeInBytesAsReportedByTreeSize + ' bytes). This may be caused by temporary/ephemeral files or other files that TreeSize does not have access to read in the child-most folder where this problem occurs.')
                 if ($boolReturnErrorWhenSizeDifferenceExceedsThreshold -eq $true) {
                     return $false
                 }
@@ -412,7 +407,7 @@ function Add-RolledUpSizeOfTreeRecursively {
             $uint64DiskAllocationInBytesAsReportedByTreeSizeLowWatermark = [uint64](($refPSObjectTreeDirectoryElement.Value).DiskAllocationInBytesAsReportedByTreeSize * (1 - $doubleThresholdInDecimal))
             $uint64DiskAllocationInBytesAsReportedByTreeSizeHighWatermark = [uint64](($refPSObjectTreeDirectoryElement.Value).DiskAllocationInBytesAsReportedByTreeSize * (1 + $doubleThresholdInDecimal))
             if ($uint64RunningTotalDiskAllocationInBytes -lt $uint64DiskAllocationInBytesAsReportedByTreeSizeLowWatermark) {
-                Write-Warning ('The rolled up disk allocation of the folder "' + ($refPSObjectTreeDirectoryElement.Value).FullPath + '" is ' + $uint64RunningTotalDiskAllocationInBytes + ' bytes, which is ' + (($refPSObjectTreeDirectoryElement.Value).DiskAllocationInBytesAsReportedByTreeSize - $uint64RunningTotalDiskAllocationInBytes) + ' bytes LESS THAN the disk allocation reported by TreeSize (' + ($refPSObjectTreeDirectoryElement.Value).DiskAllocationInBytesAsReportedByTreeSize + ' bytes). Most likely this is because TreeSize does not have access to all the files or subfolders in the folder.')
+                Write-Warning ('The rolled up disk allocation of the folder "' + ($refPSObjectTreeDirectoryElement.Value).FullPath + '" is ' + $uint64RunningTotalDiskAllocationInBytes + ' bytes, which is ' + (($refPSObjectTreeDirectoryElement.Value).DiskAllocationInBytesAsReportedByTreeSize - $uint64RunningTotalDiskAllocationInBytes) + ' bytes LESS THAN the disk allocation reported by TreeSize (' + ($refPSObjectTreeDirectoryElement.Value).DiskAllocationInBytesAsReportedByTreeSize + ' bytes). This may be caused by temporary/ephemeral files or other files that TreeSize does not have access to read in the child-most folder where this problem occurs.')
                 if ($boolReturnErrorWhenDiskAllocationDifferenceExceedsThreshold -eq $true) {
                     return $false
                 }
@@ -554,12 +549,29 @@ function Test-TreeSizePermissionsRecord {
         $arrSinglePermissionEntry = Split-StringOnLiteralString ($arrPermissions[$intCounter]) ': '
         if ($arrSinglePermissionEntry.Count -ne 2) {
             if ([string]::IsNullOrEmpty($strWorkingWarningMessage) -eq $false) {
-                $strWorkingWarningMessage += '; the permission entry "' + $arrPermissions[$intCounter] + '" is not in the format "Account: Permission"'
+                if ($arrPermissions[$intCounter] -eq 'The system cannot find the file specified') {
+                    $strWorkingWarningMessage += '; the permission entry "' + $arrPermissions[$intCounter] + '" may be caused by a temporary/ephmeral file that TreeSize was not able to read'
+                } else {
+                    $strWorkingWarningMessage += '; the permission entry "' + $arrPermissions[$intCounter] + '" is not in the format "Account: Permission"'
+                }
             } else {
-                $strWorkingWarningMessage = 'The permission entry "' + $arrPermissions[$intCounter] + '" is not in the format "Account: Permission"'
+                if ($arrPermissions[$intCounter] -eq 'The system cannot find the file specified') {
+                    $strWorkingWarningMessage = 'The permission entry "' + $arrPermissions[$intCounter] + '" may be caused by a temporary/ephmeral file that TreeSize was not able to read'
+                } else {
+                    $strWorkingWarningMessage = 'The permission entry "' + $arrPermissions[$intCounter] + '" is not in the format "Account: Permission"'
+                }
             }
         } else {
             # Correctly formatted permision entry in format "Account: Permission"
+            $strAccount = $arrSinglePermissionEntry[0]
+            if ($strAccount -eq 'The trust relationship between the primary domain and the trusted domain failed') {
+                if ([string]::IsNullOrEmpty($strWorkingWarningMessage) -eq $false) {
+                    $strWorkingWarningMessage += '; the permission entry "' + $arrPermissions[$intCounter] + '" shows a problem translating a SID to a principal name due to a failed client-domain trust relationship (or a failed domain-domain trust relationship)'
+                } else {
+                    $strWorkingWarningMessage = 'The permission entry "' + $arrPermissions[$intCounter] + '" shows a problem translating a SID to a principal name due to a failed client-domain trust relationship (or a failed domain-domain trust relationship)'
+                }
+            }
+
             $strPermission = $arrSinglePermissionEntry[1]
             $boolPermissionValid = Test-PermissionValidity $strPermission
             if ($boolPermissionValid -eq $false) {
@@ -569,6 +581,32 @@ function Test-TreeSizePermissionsRecord {
                     $strWorkingWarningMessage = 'The permission entry "' + $arrPermissions[$intCounter] + '" is not known/valid'
                 }
             }
+        }
+    }
+
+    if ([string]::IsNullOrEmpty($strWorkingWarningMessage) -eq $false) {
+        $refStringWarningMessage.Value = $strWorkingWarningMessage
+        return $false
+    } else {
+        return $true
+    }
+}
+
+function Test-TreeSizeAttributesRecord {
+    $refStringWarningMessage = $args[0]
+    $strAttributes = $args[1]
+
+    $strWorkingWarningMessage = ''
+
+    if ([string]::IsNullOrEmpty($strAttributes) -eq $false) {
+        # No attributes is perfectly OK
+        return $true
+    }
+
+    for ($intPosition = 0; $intPosition -le $strAttributes.Length; $intPosition++) {
+        $strCharacter = $strAttributes[$intPosition]
+        if ($strCharacter -eq 'E') {
+            $strWorkingWarningMessage = 'The item is encrypted'
         }
     }
 
@@ -1063,6 +1101,9 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
                     $strOwner = ''
                     Write-Warning ('Unable to convert owner "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
+                    if ($strOwner -eq 'The trust relationship between the primary domain and the trusted domain failed') {
+                        Write-Warning ('Encountered a problem translating a SID to a principal name due to a failed client-domain trust relationship (or a failed domain-domain trust relationship) for path "' + $strFullPathOrPath + '"')
+                    }
                     ($refPSObjectTreeElement.Value).Owner = $strOwner
                 }
             }
@@ -1118,6 +1159,19 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
                     } else {
                         ($refPSObjectTreeElement.Value).OwnPermissions = $strOwnPermissions
                     }
+                }
+            }
+
+            if ($__TREEINCLUDEATTRIBUTES -eq $true) {
+                $strAttributes = ''
+                $strAttributes = ($arrCSV[$intCounter]).Attributes
+                # Validate attributes
+                $strWarningMessage = ''
+                $boolSuccess = Test-TreeSizeAttributesRecord ([ref]$strWarningMessage) $strAttributes
+                if ($boolSuccess -eq $false) {
+                    Write-Warning ('Encountered problematic attribute(s) while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
+                } else {
+                    ($refPSObjectTreeElement.Value).Attributes = $strAttributes
                 }
             }
         }
