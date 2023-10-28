@@ -96,6 +96,7 @@ $__TREEINCLUDEOWNER = $false
 $__TREEINCLUDEPERMISSIONS = $true
 $__TREEINCLUDEINHERITEDPERMISSIONS = $false
 $__TREEINCLUDEOWNPERMISSIONS = $false
+$__TREEINCLUDEATTRIBUTES = $false
 
 $boolDebug = $false
 
@@ -257,6 +258,9 @@ function New-PSObjectTreeDirectoryElement {
     if ($script:__TREEINCLUDEOWNPERMISSIONS -eq $true) {
         $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'OwnPermissions' -Value ''
     }
+    if ($script:__TREEINCLUDEATTRIBUTES -eq $true) {
+        $PSObjectTreeDirectoryElement | Add-Member -MemberType NoteProperty -Name 'Attributes' -Value ''
+    }
 
     $refPSObjectTreeElement.Value = $PSObjectTreeDirectoryElement
 
@@ -301,6 +305,9 @@ function New-PSObjectTreeFileElement {
     }
     if ($script:__TREEINCLUDEOWNPERMISSIONS -eq $true) {
         $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'OwnPermissions' -Value ''
+    }
+    if ($script:__TREEINCLUDEATTRIBUTES -eq $true) {
+        $PSObjectTreeFileElement | Add-Member -MemberType NoteProperty -Name 'Attributes' -Value ''
     }
 
     $refPSObjectTreeElement.Value = $PSObjectTreeFileElement
@@ -712,6 +719,8 @@ $queueLaggingTimestamps.Enqueue($timedateStartOfLoop)
 
 Write-Verbose ($strProgressStatus + '...')
 
+$intEmptyPathCounter = 0
+
 for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
     #region Report Progress ########################################################
     $intCurrentItemNumber = $intCounter + 1 # Forward direction for loop
@@ -747,7 +756,18 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
     #endregion Extract Full Path and Type #############################################
 
     if ($boolMinimumElementsExtracted -eq $false) {
-        Write-Warning ('Failed to extract the minimum required elements from the following row: ' + $arrCSV[$intCounter])
+        if ([string]::IsNullOrEmpty($strFullPathOrPath) -eq $true) {
+            $intEmptyPathCounter++
+        }
+        if ($intEmptyPathCounter -eq 1) {
+            if ($versionPS -ge ([version]'5.0')) {
+                Write-Information ('Skipping the following row, which contains an empty path: ' + $arrCSV[$intCounter])
+            } else {
+                Write-Host ('Skipping the following row, which contains an empty path: ' + $arrCSV[$intCounter])
+            }
+        } else {
+            Write-Warning ('Failed to extract the minimum required elements from the following row (processing will continue, but this may indicate a problem with the TreeSize CSV file): ' + $arrCSV[$intCounter])
+        }
     } else {
         #region If The Type is a Folder, Ensure it Ends in Backslash ###############
         if ($strType -eq 'Folder') {
