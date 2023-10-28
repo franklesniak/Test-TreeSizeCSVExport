@@ -657,11 +657,13 @@ while ($strPathSeparator -eq '' -and $intIndex -lt $intTotalRows) {
     $strPath = ((($arrCSV[$intIndex]).PSObject).Properties) |
         Where-Object { $_.Name -eq $strNameOfColumnForFullPathOrPath } |
         Select-Object -ExpandProperty Value
-    $strParentPath = Split-Path -Path $strPath -Parent
-    if ([string]::IsNullOrEmpty($strParentPath) -eq $false) {
-        if ($strParentPath.Length -gt 3) {
-            # Not the root of a drive
-            $strPathSeparator = $strPath.Substring($strParentPath.Length, 1)
+    if ([string]::IsNullOrEmpty($strPath) -eq $false) {
+        $strParentPath = Split-Path -Path $strPath -Parent
+        if ([string]::IsNullOrEmpty($strParentPath) -eq $false) {
+            if ($strParentPath.Length -gt 3) {
+                # Not the root of a drive
+                $strPathSeparator = $strPath.Substring($strParentPath.Length, 1)
+            }
         }
     }
     $intIndex++
