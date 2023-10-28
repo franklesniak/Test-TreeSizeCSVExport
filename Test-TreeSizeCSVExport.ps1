@@ -619,6 +619,7 @@ $hashtableHeaderStatus = @{
     'Own Permissions' = $false
     'Type' = $false
     'Creation Date' = $false
+    'Attributes' = $false
 }
 
 $strNameOfColumnForFullPathOrPath = ''
