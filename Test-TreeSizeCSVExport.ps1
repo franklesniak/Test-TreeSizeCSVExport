@@ -783,12 +783,33 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
     if ([string]::IsNullOrEmpty($strFullPathOrPath) -eq $true) {
         $strFullPathOrPath = ''
     } else {
-        $strType = ''
-        $strType = ($arrCSV[$intCounter]).Type
-        if ([string]::IsNullOrEmpty($strType) -eq $true) {
+        # Path is not null or empty
+        # Check to see if path is at least three characters long
+        $boolWildcardFile = $false
+        if ($strFullPathOrPath.Length -ge 3) {
+            # Path is at least three characters long
+            # Check to see if path ends in *.*
+            if ($strFullPathOrPath.Substring($strFullPathOrPath.Length - 3, 3) -eq '*.*') {
+                # Path ends in *.*
+                # This is a rollup of multiple file types that should be ignored
+                # It seems older versions of TreeSize export this way no matter what
+                $boolWildcardFile = $true
+            }
+        }
+
+        if ($boolWildcardFile -eq $false) {
             $strType = ''
-        } else {
-            $boolMinimumElementsExtracted = $true
+            $strType = ($arrCSV[$intCounter]).Type
+            if ([string]::IsNullOrEmpty($strType) -eq $true) {
+                $strType = ''
+            } else {
+                if ($strType -eq '[multiple]') {
+                    # This is a rollup of multiple file types that should be ignored
+                    # It seems older versions of TreeSize export this way no matter what
+                } else {
+                    $boolMinimumElementsExtracted = $true
+                }
+            }
         }
     }
     #endregion Extract Full Path and Type #############################################
@@ -804,7 +825,26 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
                 Write-Host ('Skipping the following row, which contains an empty path: ' + $arrCSV[$intCounter])
             }
         } else {
-            Write-Warning ('Failed to extract the minimum required elements from the following row (processing will continue, but this may indicate a problem with the TreeSize CSV file): ' + $arrCSV[$intCounter])
+            if ($strType -eq '[multiple]') {
+                # This is a rollup of multiple file types that should be ignored
+                # It seems older versions of TreeSize export this way no matter what
+            } else {
+                $boolWildcardFile = $false
+                if ($strFullPathOrPath.Length -ge 3) {
+                    # Path is at least three characters long
+                    # Check to see if path ends in *.*
+                    if ($strFullPathOrPath.Substring($strFullPathOrPath.Length - 3, 3) -eq '*.*') {
+                        # Path ends in *.*
+                        # This is a rollup of multiple file types that should be ignored
+                        # It seems older versions of TreeSize export this way no matter what
+                        $boolWildcardFile = $true
+                    }
+                }
+
+                if ($boolWildcardFile -eq $false) {
+                    Write-Warning ('Failed to extract the minimum required elements from the following row (processing will continue, but this may indicate a problem with the TreeSize CSV file): ' + $arrCSV[$intCounter])
+                }
+            }
         }
     } else {
         #region If The Type is a Folder, Ensure it Ends in Backslash ###############
