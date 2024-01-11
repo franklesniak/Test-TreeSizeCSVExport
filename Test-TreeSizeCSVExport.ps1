@@ -77,7 +77,7 @@ param (
 # OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endregion License ####################################################################
 
-$strThisScriptVersionNumber = [version]'1.1.20231028.0'
+$strThisScriptVersionNumber = [version]'1.2.20240111.0'
 
 $datetimeStartOfScript = Get-Date
 
@@ -526,6 +526,12 @@ function Test-PermissionValidity {
     } elseif ($strExistingPermissionLevel -eq '+r+x') {
         return $true
     } elseif ($strExistingPermissionLevel -eq '-r-x') {
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '+x') {
+        # bare execute permissions are very unusual on Windows, but technically valid
+        return $true
+    } elseif ($strExistingPermissionLevel -eq '-x') {
+        # bare execute permissions are very unusual on Windows, but technically valid
         return $true
     } elseif ($strExistingPermissionLevel -eq '+r') {
         return $true
