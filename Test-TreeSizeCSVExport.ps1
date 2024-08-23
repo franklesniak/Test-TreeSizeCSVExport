@@ -57,7 +57,7 @@ param (
 )
 
 #region License ####################################################################
-# Copyright (c) 2023 Frank Lesniak
+# Copyright (c) 2024 Frank Lesniak
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of this
 # software and associated documentation files (the "Software"), to deal in the Software
@@ -77,7 +77,7 @@ param (
 # OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endregion License ####################################################################
 
-$strThisScriptVersionNumber = [version]'1.2.20240111.0'
+$strThisScriptVersionNumber = [version]'1.2.20240823.0'
 
 $datetimeStartOfScript = Get-Date
 
@@ -1103,7 +1103,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
 
             if ($__TREEINCLUDELASTMODIFIED -eq $true) {
                 $strLastModified = ''
-                $strLastModified = ($arrCSV[$intCounter]).LastModified
+                $strLastModified = ($arrCSV[$intCounter]).'Last Modified'
                 if ([string]::IsNullOrEmpty($strLastModified) -eq $true) {
                     $strLastModified = ''
                     Write-Warning ('Unable to convert last modified date "" to string for path "' + $strFullPathOrPath + '"')
@@ -1116,7 +1116,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
 
             if ($__TREEINCLUDELASTACCESSED -eq $true) {
                 $strLastAccessed = ''
-                $strLastAccessed = ($arrCSV[$intCounter]).LastAccessed
+                $strLastAccessed = ($arrCSV[$intCounter]).'Last Accessed'
                 if ([string]::IsNullOrEmpty($strLastAccessed) -eq $true) {
                     $strLastAccessed = ''
                     Write-Warning ('Unable to convert last accessed date "" to string for path "' + $strFullPathOrPath + '"')
@@ -1129,7 +1129,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
 
             if ($__TREEINCLUDECREATIONDATE -eq $true) {
                 $strCreationDate = ''
-                $strCreationDate = ($arrCSV[$intCounter]).CreationDate
+                $strCreationDate = ($arrCSV[$intCounter]).'Creation Date'
                 if ([string]::IsNullOrEmpty($strCreationDate) -eq $true) {
                     $strCreationDate = ''
                     Write-Warning ('Unable to convert creation date "" to string for path "' + $strFullPathOrPath + '"')
@@ -1174,7 +1174,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
 
             if ($__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
                 $strInheritedPermissions = ''
-                $strInheritedPermissions = ($arrCSV[$intCounter]).InheritedPermissions
+                $strInheritedPermissions = ($arrCSV[$intCounter]).'Inherited Permissions'
                 if ([string]::IsNullOrEmpty($strInheritedPermissions) -eq $true) {
                     $strInheritedPermissions = ''
                     Write-Warning ('Unable to convert inherited permissions "" to string for path "' + $strFullPathOrPath + '"')
@@ -1192,7 +1192,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
 
             if ($__TREEINCLUDEOWNPERMISSIONS -eq $true) {
                 $strOwnPermissions = ''
-                $strOwnPermissions = ($arrCSV[$intCounter]).OwnPermissions
+                $strOwnPermissions = ($arrCSV[$intCounter]).'Own Permissions'
                 if ([string]::IsNullOrEmpty($strOwnPermissions) -eq $true) {
                     $strOwnPermissions = ''
                     Write-Warning ('Unable to convert own permissions "" to string for path "' + $strFullPathOrPath + '"')
