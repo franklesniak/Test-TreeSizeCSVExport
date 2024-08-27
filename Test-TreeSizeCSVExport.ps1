@@ -624,6 +624,15 @@ function Test-TreeSizeAttributesRecord {
     }
 }
 
+$versionPS = Get-PSVersion
+
+#region Quit if PowerShell Version is Unsupported ##################################
+if ($versionPS -lt [version]'2.0') {
+    Write-Warning 'This script requires PowerShell v2.0 or higher. Please upgrade to PowerShell v2.0 or higher and try again.'
+    return # Quit script
+}
+#endregion Quit if PowerShell Version is Unsupported ##################################
+
 if ((Test-Path $CSVPath) -eq $false) {
     Write-Warning 'The a TreeSize CSV export does not exist at the specified path. Analysis cannot continue.'
     return
@@ -639,8 +648,6 @@ if ([string]::IsNullOrEmpty($PathToOutputFile) -eq $true) {
 } else {
     $strFixedCSVInputFilePath = $PathToOutputCSV
 }
-
-$versionPS = Get-PSVersion
 
 Write-Verbose 'Loading the TreeSize CSV file into memory. This may take a while...'
 $arrContent = @(Get-Content -Path $CSVPath | Select-Object -Skip 4)
@@ -749,12 +756,27 @@ $hashtablePathsToFolderElements = @{}
 $hashtableParentPathsToUnattachedChildDirectories = @{}
 $hashtableParentPathsToUnattachedChildFiles = @{}
 
+$intEmptyPathCounter = 0
+$EMPTYSTRING = ''
+$WILDCARDFILENAME = '*.*'
+$MULTIPLEFILENAME = '[multiple]'
+$FOLDERTYPE = 'Folder'
+$VERSIONFIVE = [version]'5.0'
+$VERSIONSIX = [version]'6.0'
+
+$STRINGWITHSPACE = ' '
+$SPACEOFSPACE = ' of '
+$SPACELEFTPARENTHESIS = ' ('
+$PERCENTRIGHTPARENTHESIS = '%)'
+$sbCurrentOperation = New-Object -TypeName 'System.Text.StringBuilder'
+
 #region Collect Stats/Objects Needed for Writing Progress ##########################
 $intProgressReportingFrequency = 400
 $intTotalItems = $intTotalRows
 $strProgressActivity = 'Testing TreeSize CSV file for errors'
 $strProgressStatus = 'Loading folder and file data into an in-memory tree'
 $strProgressCurrentOperationPrefix = 'Processing item'
+$boolReportOnUseCurrentOperation = $false
 $timedateStartOfLoop = Get-Date
 # Create a queue for storing lagging timestamps for ETA calculation
 $queueLaggingTimestamps = New-Object System.Collections.Queue
@@ -762,8 +784,6 @@ $queueLaggingTimestamps.Enqueue($timedateStartOfLoop)
 #endregion Collect Stats/Objects Needed for Writing Progress ##########################
 
 Write-Verbose ($strProgressStatus + '...')
-
-$intEmptyPathCounter = 0
 
 for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
     #region Report Progress ########################################################
@@ -776,26 +796,48 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
         $intNumberOfItemsProcessedInTimespan = $intProgressReportingFrequency * ($queueLaggingTimestamps.Count + 1)
         $doublePercentageComplete = ($intCurrentItemNumber - 1) / $intTotalItems
         $intItemsRemaining = $intTotalItems - $intCurrentItemNumber + 1
-        Write-Progress -Activity $strProgressActivity -Status $strProgressStatus -PercentComplete ($doublePercentageComplete * 100) -CurrentOperation ($strProgressCurrentOperationPrefix + ' ' + $intCurrentItemNumber + ' of ' + $intTotalItems + ' (' + [string]::Format('{0:0.00}', ($doublePercentageComplete * 100)) + '%)') -SecondsRemaining (($timespanTimeDelta.TotalSeconds / $intNumberOfItemsProcessedInTimespan) * $intItemsRemaining)
+        if ($boolReportOnUseCurrentOperation -eq $true) {
+            [void]($sbCurrentOperation.Clear())
+            [void]($sbCurrentOperation.Append($strProgressCurrentOperationPrefix))
+            [void]($sbCurrentOperation.Append($STRINGWITHSPACE))
+            [void]($sbCurrentOperation.Append($intCurrentItemNumber))
+            [void]($sbCurrentOperation.Append($SPACEOFSPACE))
+            [void]($sbCurrentOperation.Append($intTotalItems))
+            [void]($sbCurrentOperation.Append($SPACELEFTPARENTHESIS))
+            [void]($sbCurrentOperation.Append([string]::Format('{0:0.00}', ($doublePercentageComplete * 100))))
+            [void]($sbCurrentOperation.Append($PERCENTRIGHTPARENTHESIS))
+            [void]($strProgressCurrentOperationPrefix = $sbCurrentOperation.ToString())
+            Write-Progress -Activity $strProgressActivity -Status $strProgressStatus -PercentComplete ($doublePercentageComplete * 100) -CurrentOperation ($sbCurrentOperation.ToString()) -SecondsRemaining (($timespanTimeDelta.TotalSeconds / $intNumberOfItemsProcessedInTimespan) * $intItemsRemaining)
+        } else {
+            Write-Progress -Activity $strProgressActivity -Status $strProgressStatus -PercentComplete ($doublePercentageComplete * 100) -SecondsRemaining (($timespanTimeDelta.TotalSeconds / $intNumberOfItemsProcessedInTimespan) * $intItemsRemaining)
+        }
     }
     #endregion Report Progress ########################################################
 
     #region Extract Full Path and Type #############################################
     $boolMinimumElementsExtracted = $false
-    $strFullPathOrPath = ''
-    $strFullPathOrPath = @((($arrCSV[$intCounter]).PSObject).Properties) |
-        Where-Object { $_.Name -eq $strNameOfColumnForFullPathOrPath } |
-        ForEach-Object { $_.Value }
-    if ([string]::IsNullOrEmpty($strFullPathOrPath) -eq $true) {
-        $strFullPathOrPath = ''
-    } else {
+
+    try {
+        $strFullPathOrPath = @((($arrCSV[$intCounter]).PSObject).Properties) |
+            Where-Object { $_.Name -eq $strNameOfColumnForFullPathOrPath } |
+            ForEach-Object { $_.Value }
+    } catch {
+        $strFullPathOrPath = $EMPTYSTRING
+    }
+
+    if (-not [string]::IsNullOrEmpty($strFullPathOrPath)) {
         # Path is not null or empty
+
         # Check to see if path is at least three characters long
         $boolWildcardFile = $false
         if ($strFullPathOrPath.Length -ge 3) {
             # Path is at least three characters long
             # Check to see if path ends in *.*
-            if ($strFullPathOrPath.Substring($strFullPathOrPath.Length - 3, 3) -eq '*.*') {
+            # Note: in the following line,
+            # $strFullPathOrPath.Substring($strFullPathOrPath.Length - 3, 3)
+            # was refactored to
+            # $strFullPathOrPath[-3..-1] -join ''
+            if ($strFullPathOrPath[-3..-1] -join '' -eq $WILDCARDFILENAME) {
                 # Path ends in *.*
                 # This is a rollup of multiple file types that should be ignored
                 # It seems older versions of TreeSize export this way no matter what
@@ -803,58 +845,59 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             }
         }
 
-        if ($boolWildcardFile -eq $false) {
-            $strType = ''
-            $strType = ($arrCSV[$intCounter]).Type
-            if ([string]::IsNullOrEmpty($strType) -eq $true) {
-                $strType = ''
-            } else {
-                if ($strType -eq '[multiple]') {
+        if (-not $boolWildcardFile) {
+            try {
+                $strType = ($arrCSV[$intCounter]).Type
+            } catch {
+                $strType = $EMPTYSTRING
+            }
+
+            if (-not [string]::IsNullOrEmpty($strType)) {
+                if ($strType -ne $MULTIPLEFILENAME) {
+                    $boolMinimumElementsExtracted = $true
+
+                    # ELSE:
                     # This is a rollup of multiple file types that should be ignored
                     # It seems older versions of TreeSize export this way no matter what
-                } else {
-                    $boolMinimumElementsExtracted = $true
                 }
             }
         }
     }
     #endregion Extract Full Path and Type #############################################
 
-    if ($boolMinimumElementsExtracted -eq $false) {
-        if ([string]::IsNullOrEmpty($strFullPathOrPath) -eq $true) {
+    if (-not $boolMinimumElementsExtracted) {
+        if ([string]::IsNullOrEmpty($strFullPathOrPath)) {
             $intEmptyPathCounter++
         }
         if ($intEmptyPathCounter -eq 1) {
-            if ($versionPS -ge ([version]'5.0')) {
-                Write-Information ('Skipping the following row, which contains an empty path: ' + $arrCSV[$intCounter])
+            $strMessage = 'Skipping the following row, which contains an empty path: ' + $arrCSV[$intCounter]
+            if ($versionPS -ge $VERSIONFIVE) {
+                Write-Information $strMessage
             } else {
-                Write-Host ('Skipping the following row, which contains an empty path: ' + $arrCSV[$intCounter])
+                Write-Host $strMessage
             }
-        } else {
-            if ($strType -eq '[multiple]') {
+        } elseif ($strType -ne $MULTIPLEFILENAME -and $strFullPathOrPath.Length -ge 3) {
+            $boolWildcardFile = $false
+            # Path is at least three characters long
+            # Check to see if path ends in *.*
+            # Note: in the following line,
+            # $strFullPathOrPath.Substring($strFullPathOrPath.Length - 3, 3)
+            # was refactored to
+            # $strFullPathOrPath[-3..-1] -join ''
+            if ($strFullPathOrPath[-3..-1] -join '' -eq $WILDCARDFILENAME) {
+                # Path ends in *.*
                 # This is a rollup of multiple file types that should be ignored
                 # It seems older versions of TreeSize export this way no matter what
-            } else {
-                $boolWildcardFile = $false
-                if ($strFullPathOrPath.Length -ge 3) {
-                    # Path is at least three characters long
-                    # Check to see if path ends in *.*
-                    if ($strFullPathOrPath.Substring($strFullPathOrPath.Length - 3, 3) -eq '*.*') {
-                        # Path ends in *.*
-                        # This is a rollup of multiple file types that should be ignored
-                        # It seems older versions of TreeSize export this way no matter what
-                        $boolWildcardFile = $true
-                    }
-                }
+                $boolWildcardFile = $true
+            }
 
-                if ($boolWildcardFile -eq $false) {
-                    Write-Warning ('Failed to extract the minimum required elements from the following row (processing will continue, but this may indicate a problem with the TreeSize CSV file): ' + $arrCSV[$intCounter])
-                }
+            if (-not $boolWildcardFile) {
+                Write-Warning ('Failed to extract the minimum required elements from the following row (processing will continue, but this may indicate a problem with the TreeSize CSV file): ' + $arrCSV[$intCounter])
             }
         }
     } else {
         #region If The Type is a Folder, Ensure it Ends in Backslash ###############
-        if ($strType -eq 'Folder') {
+        if ($strType -eq $FOLDERTYPE) {
             # Append a backslash if it's not already there
             if ($strFullPathOrPath.Substring($strFullPathOrPath.Length - 1, 1) -ne $strPathSeparator) {
                 $strFullPathOrPath = $strFullPathOrPath + $strPathSeparator
@@ -868,7 +911,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
 
         #region Create the PSObjectTreeElement #####################################
         $refPSObjectTreeElement = [ref]$null
-        if ($strType -eq 'Folder') {
+        if ($strType -eq $FOLDERTYPE) {
             if ($boolDebug -eq $true) {
                 Write-Debug ('Creating a PSObjectTreeElement for a folder...')
             }
@@ -892,7 +935,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
         } else {
             #region Store the Full Path ############################################
             ($refPSObjectTreeElement.Value).FullPath = $strFullPathOrPath
-            if ($strType -eq 'Folder') {
+            if ($strType -eq $FOLDERTYPE) {
                 # This is a folder
                 if ($hashtablePathsToFolderElements.ContainsKey($strFullPathOrPath) -eq $true) {
                     # This path has already been added to the tree
@@ -933,18 +976,18 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
                 if ($hashtablePathsToFolderElements.ContainsKey($strParentPath) -eq $false) {
                     # This path's parent folder has not yet been added to the tree
                     $refToParentElement = [ref]$null
-                    if ($strType -eq 'Folder') {
+                    if ($strType -eq $FOLDERTYPE) {
                         # This is a folder
                         if ($hashtableParentPathsToUnattachedChildDirectories.ContainsKey($strParentPath) -eq $false) {
                             # New unattached parent folder
-                            if ($versionPS -ge ([version]'6.0')) {
+                            if ($versionPS -ge $VERSIONSIX) {
                                 $hashtableParentPathsToUnattachedChildDirectories.Add($strParentPath, (New-Object System.Collections.Generic.List[ref]))
                             } else {
                                 $hashtableParentPathsToUnattachedChildDirectories.Add($strParentPath, (New-Object System.Collections.ArrayList))
                             }
                         }
                         # Add this element to the existing list
-                        if ($versionPS -ge ([version]'6.0')) {
+                        if ($versionPS -ge $VERSIONSIX) {
                             ($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add($refPSObjectTreeElement)
                         } else {
                             [void](($hashtableParentPathsToUnattachedChildDirectories.Item($strParentPath)).Add($refPSObjectTreeElement))
@@ -953,14 +996,14 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
                         # Assume file
                         if ($hashtableParentPathsToUnattachedChildFiles.ContainsKey($strParentPath) -eq $false) {
                             # New unattached parent folder
-                            if ($versionPS -ge ([version]'6.0')) {
+                            if ($versionPS -ge $VERSIONSIX) {
                                 $hashtableParentPathsToUnattachedChildFiles.Add($strParentPath, (New-Object System.Collections.Generic.List[ref]))
                             } else {
                                 $hashtableParentPathsToUnattachedChildFiles.Add($strParentPath, (New-Object System.Collections.ArrayList))
                             }
                         }
                         # Add this element to the existing list
-                        if ($versionPS -ge ([version]'6.0')) {
+                        if ($versionPS -ge $VERSIONSIX) {
                             ($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add($refPSObjectTreeElement)
                         } else {
                             [void](($hashtableParentPathsToUnattachedChildFiles.Item($strParentPath)).Add($refPSObjectTreeElement))
@@ -969,7 +1012,7 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
                 } else {
                     # This path's parent folder has already been added to the tree
                     $refToParentElement = $hashtablePathsToFolderElements.Item($strParentPath)
-                    if ($strType -eq 'Folder') {
+                    if ($strType -eq $FOLDERTYPE) {
                         # This is a folder
                         if ((($refToParentElement.Value).ChildDirectories).ContainsKey($strName) -eq $true) {
                             # This folder already exists in the parent folder
@@ -1068,10 +1111,10 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             #endregion Attach to Already-Existing Children ############################
 
             if ($__TREEINCLUDESIZE -eq $true) {
-                $strSize = ''
+                $strSize = $EMPTYSTRING
                 $strSize = ($arrCSV[$intCounter]).Size
                 if ([string]::IsNullOrEmpty($strSize) -eq $true) {
-                    $strSize = ''
+                    $strSize = $EMPTYSTRING
                     Write-Warning ('Unable to convert size "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     $int64Size = [uint64]0
@@ -1085,10 +1128,10 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             }
 
             if ($__TREEINCLUDEALLOCATED -eq $true) {
-                $strAllocated = ''
+                $strAllocated = $EMPTYSTRING
                 $strAllocated = ($arrCSV[$intCounter]).Allocated
                 if ([string]::IsNullOrEmpty($strAllocated) -eq $true) {
-                    $strAllocated = ''
+                    $strAllocated = $EMPTYSTRING
                     Write-Warning ('Unable to convert disk allocation "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     $int64DiskAllocation = [uint64]0
@@ -1102,10 +1145,10 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             }
 
             if ($__TREEINCLUDELASTMODIFIED -eq $true) {
-                $strLastModified = ''
+                $strLastModified = $EMPTYSTRING
                 $strLastModified = ($arrCSV[$intCounter]).'Last Modified'
                 if ([string]::IsNullOrEmpty($strLastModified) -eq $true) {
-                    $strLastModified = ''
+                    $strLastModified = $EMPTYSTRING
                     Write-Warning ('Unable to convert last modified date "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # TODO: Create a function to do this conversion safely
@@ -1115,10 +1158,10 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             }
 
             if ($__TREEINCLUDELASTACCESSED -eq $true) {
-                $strLastAccessed = ''
+                $strLastAccessed = $EMPTYSTRING
                 $strLastAccessed = ($arrCSV[$intCounter]).'Last Accessed'
                 if ([string]::IsNullOrEmpty($strLastAccessed) -eq $true) {
-                    $strLastAccessed = ''
+                    $strLastAccessed = $EMPTYSTRING
                     Write-Warning ('Unable to convert last accessed date "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # TODO: Create a function to do this conversion safely
@@ -1128,10 +1171,10 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             }
 
             if ($__TREEINCLUDECREATIONDATE -eq $true) {
-                $strCreationDate = ''
+                $strCreationDate = $EMPTYSTRING
                 $strCreationDate = ($arrCSV[$intCounter]).'Creation Date'
                 if ([string]::IsNullOrEmpty($strCreationDate) -eq $true) {
-                    $strCreationDate = ''
+                    $strCreationDate = $EMPTYSTRING
                     Write-Warning ('Unable to convert creation date "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # TODO: Create a function to do this conversion safely
@@ -1141,10 +1184,10 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             }
 
             if ($__TREEINCLUDEOWNER -eq $true) {
-                $strOwner = ''
+                $strOwner = $EMPTYSTRING
                 $strOwner = ($arrCSV[$intCounter]).Owner
                 if ([string]::IsNullOrEmpty($strOwner) -eq $true) {
-                    $strOwner = ''
+                    $strOwner = $EMPTYSTRING
                     Write-Warning ('Unable to convert owner "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     if ($strOwner -eq 'The trust relationship between the primary domain and the trusted domain failed') {
@@ -1155,14 +1198,14 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             }
 
             if ($__TREEINCLUDEPERMISSIONS -eq $true) {
-                $strPermissions = ''
+                $strPermissions = $EMPTYSTRING
                 $strPermissions = ($arrCSV[$intCounter]).Permissions
                 if ([string]::IsNullOrEmpty($strPermissions) -eq $true) {
-                    $strPermissions = ''
+                    $strPermissions = $EMPTYSTRING
                     Write-Warning ('Unable to convert permissions "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # Validate permissions
-                    $strWarningMessage = ''
+                    $strWarningMessage = $EMPTYSTRING
                     $boolSuccess = Test-TreeSizePermissionsRecord ([ref]$strWarningMessage) $strPermissions
                     if ($boolSuccess -eq $false) {
                         Write-Warning ('Encountered invalid permissions while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
@@ -1173,14 +1216,14 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             }
 
             if ($__TREEINCLUDEINHERITEDPERMISSIONS -eq $true) {
-                $strInheritedPermissions = ''
+                $strInheritedPermissions = $EMPTYSTRING
                 $strInheritedPermissions = ($arrCSV[$intCounter]).'Inherited Permissions'
                 if ([string]::IsNullOrEmpty($strInheritedPermissions) -eq $true) {
-                    $strInheritedPermissions = ''
+                    $strInheritedPermissions = $EMPTYSTRING
                     Write-Warning ('Unable to convert inherited permissions "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # Validate permissions
-                    $strWarningMessage = ''
+                    $strWarningMessage = $EMPTYSTRING
                     $boolSuccess = Test-TreeSizePermissionsRecord ([ref]$strWarningMessage) $strInheritedPermissions
                     if ($boolSuccess -eq $false) {
                         Write-Warning ('Encountered invalid inherited permissions while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
@@ -1191,14 +1234,14 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             }
 
             if ($__TREEINCLUDEOWNPERMISSIONS -eq $true) {
-                $strOwnPermissions = ''
+                $strOwnPermissions = $EMPTYSTRING
                 $strOwnPermissions = ($arrCSV[$intCounter]).'Own Permissions'
                 if ([string]::IsNullOrEmpty($strOwnPermissions) -eq $true) {
-                    $strOwnPermissions = ''
+                    $strOwnPermissions = $EMPTYSTRING
                     Write-Warning ('Unable to convert own permissions "" to string for path "' + $strFullPathOrPath + '"')
                 } else {
                     # Validate permissions
-                    $strWarningMessage = ''
+                    $strWarningMessage = $EMPTYSTRING
                     $boolSuccess = Test-TreeSizePermissionsRecord ([ref]$strWarningMessage) $strOwnPermissions
                     if ($boolSuccess -eq $false) {
                         Write-Warning ('Encountered invalid own permissions while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
@@ -1209,10 +1252,10 @@ for ($intCounter = 0; $intCounter -lt $intTotalItems; $intCounter++) {
             }
 
             if ($__TREEINCLUDEATTRIBUTES -eq $true) {
-                $strAttributes = ''
+                $strAttributes = $EMPTYSTRING
                 $strAttributes = ($arrCSV[$intCounter]).Attributes
                 # Validate attributes
-                $strWarningMessage = ''
+                $strWarningMessage = $EMPTYSTRING
                 $boolSuccess = Test-TreeSizeAttributesRecord ([ref]$strWarningMessage) $strAttributes
                 if ($boolSuccess -eq $false) {
                     Write-Warning ('Encountered problematic attribute(s) while processing path "' + $strFullPathOrPath + '": ' + $strWarningMessage)
